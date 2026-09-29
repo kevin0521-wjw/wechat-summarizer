@@ -45,9 +45,33 @@
 
     <!-- 操作 -->
     <section class="actions">
-      <button class="btn" id="btn-daily">立即生成每日汇总</button>
-      <button class="btn btn-ghost" id="btn-weekly">生成周报</button>
+      <button class="btn" id="btn-daily">立即出「每日统计」（活跃群/整体）</button>
+      <button class="btn btn-ghost" id="btn-weekly">立即出「每周汇总」（免打扰群）</button>
       <span class="hint" id="action-hint"></span>
+    </section>
+
+    <!-- 选中即分析：粘贴/输入内容 → DeepSeek → 结果 -->
+    <section class="card analyze">
+      <div class="card-title">
+        选中即分析
+        <span class="hint" id="hotkey-hint">桌面版：选中内容后按 Ctrl+Alt+D，结果浮在屏幕上</span>
+      </div>
+      <textarea id="sel-input" rows="4"
+        placeholder="把聊天记录 / 长段文字 / 视频链接粘到这里，或直接点「分析选中内容」自动读取剪贴板…"></textarea>
+      <div class="actions">
+        <button class="btn" id="btn-analyze">分析这段内容</button>
+        <button class="btn btn-ghost" id="btn-analyze-clip">分析剪贴板</button>
+        <select id="sel-kind" class="sel">
+          <option value="">自动判断类型</option>
+          <option value="chat">当作聊天记录</option>
+          <option value="text">当作长段文字</option>
+          <option value="link">当作链接</option>
+          <option value="video">当作视频</option>
+          <option value="emoji">当作表情包</option>
+        </select>
+        <span class="hint" id="analyze-hint"></span>
+      </div>
+      <div class="analyze-out" id="analyze-out"></div>
     </section>
 
     <!-- 双栏：消息流 + 汇总 -->

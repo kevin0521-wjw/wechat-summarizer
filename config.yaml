@@ -12,6 +12,9 @@ ai:
   api_key: "sk-xxxxxxxx"          # 换成你的 key
   model: "deepseek-chat"
   max_tokens: 800
+  # 可选：表情包/图片识别用的视觉模型（DeepSeek 暂无视觉，可填
+  # qwen-vl-max / gpt-4o-mini / glm-4v 等 OpenAI 兼容的多模态模型）
+  vision_model: ""
 
 # 视频/链接解析
 video:
@@ -32,11 +35,37 @@ video:
   # 是否优先用 video-link-pipeline（需自行安装 `vlp` 命令；否则用本地 yt-dlp 流程）
   use_pipeline: false
 
-# 汇总频率（秒）
+# 汇总频率（按用户确定的分层规则）
+#   免打扰/折叠群 → 每周一次
+#   活跃群/整体   → 每天出统计
+#   @我的         → 实时抽出（配置见 focus.notify_at_me）
+#   视频/链接     → 实时秒级解析
 schedule:
-  muted_group_daily: "21:00"      # 免打扰/折叠群：每天 21:00 汇总一次
-  weekly_report: "mon 09:00"      # 每周一 09:00 出周报
-  realtime_video: true            # 好友发视频/链接 → 实时解析并推送
+  muted_group_weekly: "sun 21:00"   # 免打扰/折叠群：每周日 21:00 汇总一次
+  daily_stats: "21:00"              # 活跃群/整体：每天 21:00 出统计
+  realtime_video: true              # 选中/收到视频链接 → 实时解析推送
+  realtime_at_me: true              # @我的 → 实时抽出推送
+
+# 选中即分析（划词 → DeepSeek → 悬浮输出）
+selection:
+  enabled: true
+  # 全局热键：选中内容后按下即分析
+  hotkey: "ctrl+alt+d"
+  # 悬浮窗（桌面端）：结果浮在屏幕右上角
+  overlay:
+    enabled: true
+    width: 420
+    height: 560
+    opacity: 0.96
+    position: "top-right"     # top-right | top-left | bottom-right | bottom-left
+    auto_hide_sec: 0          # 0 = 不自动隐藏，按 Esc 关闭
+  # 各类内容的处理方式
+  kind:
+    video: "realtime"         # 视频链接 → 实时解析（字幕+评论+总结）
+    link: "ai"                # 普通链接 → AI 判断价值/风险
+    chat: "ai"                # 聊天记录 → 主题+@我+回复候选
+    text: "ai"                # 长段文字 → 摘要+要点+待办
+    emoji: "vision"           # 表情包 → 视觉模型识别（需配 vision_model）
 
 # 推送通道（可多个同时开）
 push:
@@ -48,13 +77,20 @@ push:
   wecom_webhook: ""
   # 桌面 Toast 通知（Windows，电脑在线时最直观）
   toast: true
+  # 桌面悬浮窗（选中分析的结果显示在这里）
+  overlay: true
   # 落盘 txt（兜底，永远可用）
   txt_file: "output/summary.txt"
 
-# 关注的私聊对象 / 群（空 = 全部关注；填 wxid 或群名则只关注这些）
+# 关注对象 / 群分组
 focus:
-  contacts: []        # 例如 ["wxid_xxx"]，留空表示全部
-  muted_rooms: []     # 免打扰群列表（这些群走「每日汇总」而非实时）
+  contacts: []        # 关注的私聊对象（wxid），留空 = 全部；命中则出「回复建议」
+  # 免打扰 / 折叠群（这些群 → 每周汇总一次）
+  muted_rooms: []
+  # 活跃群（这些群 → 每天出统计）；留空则自动取当天消息量 top 5
+  active_rooms: []
+  # 有人 @我 时立即抽出并推送
+  notify_at_me: true
 
 # 数据落库
 db:

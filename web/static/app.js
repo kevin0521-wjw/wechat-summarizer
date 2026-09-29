@@ -2,7 +2,13 @@
 let lastTs = 0;           // 消息游标（增量拉取）
 let summariesSeq = 0;     // 汇总游标（避免重复渲染）
 
-const KIND_LABEL = { video: '视频', daily: '每日', weekly: '周报', reply: '回复', manual: '手动' };
+const KIND_LABEL = {
+  video: '视频', manual: '手动', reply: '回复',
+  daily_all: '每日统计', daily_active: '群日统计', weekly_muted: '每周汇总',
+  at_me: '@我',
+  selection_text: '选中·文字', selection_chat: '选中·聊天', selection_link: '选中·链接',
+  selection_video: '选中·视频', selection_emoji: '选中·表情',
+};
 
 function fmtTime(ts) {
   const d = new Date(ts * 1000);
@@ -131,6 +137,70 @@ async function triggerSummary(kind) {
 
 document.getElementById('btn-daily').addEventListener('click', () => triggerSummary('daily'));
 document.getElementById('btn-weekly').addEventListener('click', () => triggerSummary('weekly'));
+
+// ---------------------------------------------------------------- 选中即分析
+const SEL_TAG = {
+  video: '视频解析', link: '链接', chat: '聊天记录',
+  emoji: '表情包', image: '图片', text: '文字', empty: '无内容', error: '错误'
+};
+
+async function analyzeSelection(useClipboard) {
+  const box = document.getElementById('analyze-out');
+  const hint = document.getElementById('analyze-hint');
+  const text = document.getElementById('sel-input').value.trim();
+  const kind = document.getElementById('sel-kind').value;
+
+  if (!useClipboard && !text) {
+    hint.textContent = '先粘一段内容，或改用「分析剪贴板」';
+    setTimeout(() => (hint.textContent = ''), 3000);
+    return;
+  }
+
+  box.innerHTML = '<div class="loading-line"><span class="mini-spin"></span> 正在请求 DeepSeek…</div>';
+  hint.textContent = '';
+
+  const r = await getJSON('/api/analyze', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      text: useClipboard ? null : text,
+      hint: kind,
+      use_clipboard: !!useClipboard,
+    }),
+  });
+
+  if (!r) {
+    box.innerHTML = '<div class="err">请求失败（后端未启动？）</div>';
+    return;
+  }
+  if (r.error) {
+    box.innerHTML = `<div class="err">${r.error}</div>`;
+    return;
+  }
+
+  const k = r.kind || 'text';
+  box.innerHTML =
+    `<div class="out-head"><span class="kind ${k}">${SEL_TAG[k] || k}</span>` +
+    `<span class="out-title">${(r.title || '').replace(/</g, '&lt;')}</span></div>` +
+    `<pre class="out-body">${(r.text || '').replace(/</g, '&lt;')}</pre>`;
+
+  // 桌面版：结果同时推到悬浮窗（若在 Electron 里打开）
+  if (window.wxai && window.wxai.onResult) { /* 悬浮窗由主进程推送，这里无需处理 */ }
+  refreshSummaries();
+}
+
+document.getElementById('btn-analyze').addEventListener('click', () => analyzeSelection(false));
+document.getElementById('btn-analyze-clip').addEventListener('click', () => analyzeSelection(true));
+
+// 热键提示（从后端读配置）
+(async () => {
+  const sc = await getJSON('/api/selection_config');
+  if (sc && sc.hotkey) {
+    const h = sc.hotkey.replace(/ctrl/gi, 'Ctrl').replace(/alt/gi, 'Alt').toUpperCase();
+    const el = document.getElementById('hotkey-hint');
+    if (el) el.textContent = `桌面版：选中内容后按 ${h}，结果浮在屏幕上`;
+  }
+})();
 
 // 首屏
 refreshHealth();

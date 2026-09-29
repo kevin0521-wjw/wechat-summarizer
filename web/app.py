@@ -86,6 +86,37 @@ def summarize(kind: str = "daily"):
     return engine.trigger_summary(kind)
 
 
+@app.post("/api/analyze")
+def analyze(payload: dict = None):
+    """
+    选中即分析：把一段文字/聊天记录/链接交给 DeepSeek，返回结果。
+    body: {"text": "...", "hint": "text|chat|link|video|emoji", "use_clipboard": false}
+    """
+    if engine is None:
+        return JSONResponse({"error": "未初始化"}, status_code=503)
+    payload = payload or {}
+    text = payload.get("text")
+    hint = payload.get("hint", "")
+    use_clip = bool(payload.get("use_clipboard", False)) and text is None
+    try:
+        return engine.analyze_selection(text=text, hint=hint, use_clipboard=use_clip)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/api/selection_config")
+def selection_config():
+    """给桌面端/前端读热键与悬浮窗配置"""
+    cfg = engine.cfg if engine is not None else load()
+    sel = cfg.get("selection", {})
+    return {
+        "enabled": sel.get("enabled", True),
+        "hotkey": sel.get("hotkey", "ctrl+alt+d"),
+        "overlay": sel.get("overlay", {}),
+        "kinds": sel.get("kind", {}),
+    }
+
+
 @app.get("/api/config")
 def config():
     cfg = engine.cfg if engine is not None else load()

@@ -42,7 +42,7 @@ class Engine:
     # 核心消息处理
     # ------------------------------------------------------------------
     def on_message(self, msg: dict) -> None:
-        """每条消息：落库 → 路由 → 视频解析 / 回复建议"""
+        """每条消息：落库 → 路由 → 实时动作（视频/@我/回复建议）"""
         self.store.add(msg)
         r = self.dispatcher.route(msg)
         action = r["action"]
@@ -51,9 +51,56 @@ class Engine:
             # 视频解析耗时（下载字幕+AI），丢线程避免阻塞消息回调
             threading.Thread(target=self._handle_video, args=(r["links"],), daemon=True).start()
 
+        # @我的 → 实时抽出（群聊 + 私聊都算；私聊本身就是找我的）
+        if self._is_at_me(msg):
+            threading.Thread(target=self._handle_at_me, args=(msg,), daemon=True).start()
+
         focus = set(self.cfg["focus"]["contacts"])
         if (not msg.get("is_group")) and (msg.get("sender") in focus):
             threading.Thread(target=self._suggest_reply, args=(msg,), daemon=True).start()
+
+    def _is_at_me(self, msg: dict) -> bool:
+        """判定是否有人 @我"""
+        if msg.get("is_self"):
+            return False
+        if not self.cfg.get("focus", {}).get("notify_at_me", True):
+            return False
+        content = msg.get("content", "") or ""
+        xml = msg.get("xml", "") or ""
+        # 微信 @ 在文本里是 "@昵称"，在 xml 里是 <atuserlist>
+        if "@" in content:
+            return True
+        if "atuserlist" in xml.lower():
+            return True
+        # 私聊（非群）默认算「找我」，但避免刷屏：只对关注的联系人
+        return False
+
+    def _handle_at_me(self, msg: dict) -> None:
+        """@我 → 立即抽出这条（附上下文）推给我"""
+        room = msg.get("room_name") or msg.get("room_id") or "私聊"
+        sender = msg.get("sender") or "?"
+        content = (msg.get("content") or "").strip()
+        # 附上最近 5 条上下文，方便判断在说什么
+        ctx = self.store.query_since(int(time.time()) - 600)
+        ctx = [m for m in ctx if (m.get("room_id") or "") == (msg.get("room_id") or "")][-6:]
+        ctx_text = "\n".join(
+            f"[{'我' if m.get('is_self') else (m.get('sender') or '?')[:10]}] {(m.get('content') or '')[:150]}"
+            for m in ctx
+        )
+        title = f"[@我] {room} · {sender}"
+        try:
+            if self.summarizer:
+                out = self.summarizer.chat_log_analysis(
+                    f"以下是 {room} 的近期对话，其中 {sender} @了我：\n\n{ctx_text}\n\n"
+                    f"请告诉我：①他在问什么 ②我该怎么回（给 2 条候选）"
+                )
+            else:
+                out = content
+        except Exception as e:
+            out = f"{sender} 在 {room} 提到你：{content}\n（AI 分析失败：{e}）"
+        self.pusher.send(title, out)
+        self.store.add_summary(title, out, "at_me")
+        print(f"[@我] 已实时推送：{title}")
 
     def _handle_video(self, links: list) -> None:
         platforms = self.cfg["video"]["platforms"]
@@ -142,6 +189,28 @@ class Engine:
     # ------------------------------------------------------------------
     # 供 Web 调用
     # ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # 选中即分析（划词 → DeepSeek → 结果）
+    # ------------------------------------------------------------------
+    def analyze_selection(self, text: str = None, hint: str = "", use_clipboard: bool = True) -> dict:
+        """
+        分析「选中的内容」。
+        - text 传了就用 text；没传且 use_clipboard=True 则从剪贴板/选中区取
+        - 返回 {"kind","title","text",...}，供悬浮窗 / 网页展示
+        """
+        from core.selection import analyze_selection as _analyze
+        if text is None and use_clipboard:
+            from core.selection import grab_with_restore
+            text = grab_with_restore()
+        res = _analyze(self.cfg, self.summarizer, text=text or "", hint=hint)
+        # 落库，方便网页/桌面回看
+        try:
+            self.store.add_summary(f"[选中] {res.get('title', '')}", res.get("text", ""),
+                                   f"selection_{res.get('kind', 'text')}")
+        except Exception:
+            pass
+        return res
+
     def get_stats(self) -> dict:
         from core import stats as st
         msgs = self.store.all()
@@ -159,11 +228,16 @@ class Engine:
         return self.store.list_summaries(limit)
 
     def trigger_summary(self, kind: str = "daily") -> dict:
-        if kind == "weekly":
-            self.scheduler._weekly()
-        else:
-            self.scheduler._daily_muted()
-        return {"ok": True, "kind": kind}
+        """
+        kind:
+          daily  → 活跃群/整体，出当天统计（每天一次的那个）
+          weekly → 免打扰/折叠群，出一周汇总（每周一次的那个）
+        """
+        if kind in ("weekly", "weekly_muted", "muted"):
+            self.scheduler._weekly_muted()
+            return {"ok": True, "kind": "weekly_muted"}
+        self.scheduler._daily_all()
+        return {"ok": True, "kind": "daily_all"}
 
     # ------------------------------------------------------------------
     # 时间戳持久化
