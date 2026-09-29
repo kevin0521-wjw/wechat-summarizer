@@ -60,11 +60,23 @@ wechat-summarizer/
 
 ## 三、快速开始
 
+> 💡 **推荐：先只开「查看界面」验证安装**（不连微信，零风险）
+> ```bash
+> python web/app.py --no-listener     # 浏览器开 http://127.0.0.1:8080
+> ```
+> 界面能打开、能看统计/汇总，说明环境没问题，再按下面接真实消息源。
+
 ### 0. 安装依赖
 
 ```bash
 pip install -r requirements.txt
 ```
+
+> ⚠️ 国内网络注意：
+> - 若 `pip` 从清华镜像报 **403**（UA 反爬），换腾讯云镜像：
+>   `pip install -r requirements.txt -i https://mirrors.cloud.tencent.com/pypi/simple`
+> - 若开了 Clash 等代理导致 pip 卡住，先 `unset HTTP_PROXY HTTPS_PROXY` 再装。
+> - 本机自带代理时，**别把代理写进 pip 配置**，否则 `git credential fill` 会取不到值。
 
 ### 1. 配置
 
@@ -91,9 +103,13 @@ python web/app.py            # 浏览器开 http://127.0.0.1:8080
 **PC 桌面版（开发模式）**
 ```bash
 cd desktop
-npm install
+npm install                  # 国内慢可加 --registry=https://registry.npmmirror.com
 npm start                    # 起 Python 后端 + 打开桌面窗口
 ```
+
+> 若 Electron 本体下载卡住，先设镜像：
+> `export ELECTRON_MIRROR="https://registry.npmmirror.com/-/binary/electron/"`
+> （实测本机 3 分钟装完 310 个包，electron v20.18.0）
 
 **PC 桌面版（打包 exe）**
 ```bash
