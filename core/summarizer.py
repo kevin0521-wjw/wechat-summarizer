@@ -13,14 +13,22 @@ from openai import OpenAI
 
 class Summarizer:
     def __init__(self, cfg: dict):
+        self._apply_cfg(cfg)
+
+    def _apply_cfg(self, cfg: dict) -> None:
+        """把配置应用到实例；网页界面改了 key 后调用它即可热更新（无需重启）"""
         self.cfg = cfg
-        self.api_key = cfg["ai"]["api_key"]
-        self.client = OpenAI(
-            base_url=cfg["ai"]["base_url"],
-            api_key=self.api_key,
-        )
-        self.model = cfg["ai"]["model"]
-        self.max_tokens = cfg["ai"]["max_tokens"]
+        ai = cfg.get("ai", {}) or {}
+        self.api_key = ai.get("api_key", "")
+        self.base_url = ai.get("base_url", "https://api.deepseek.com/v1")
+        self.model = ai.get("model", "deepseek-chat")
+        self.max_tokens = ai.get("max_tokens", 800)
+        self.client = OpenAI(base_url=self.base_url, api_key=self.api_key or "sk-placeholder")
+
+    def reload(self) -> None:
+        """从磁盘重读配置（网页界面保存后由后端调用）"""
+        from core.config import load
+        self._apply_cfg(load())
 
     def _chat(self, system: str, user: str, temperature: float = 0.3) -> str:
         if not _has_key(self.api_key):

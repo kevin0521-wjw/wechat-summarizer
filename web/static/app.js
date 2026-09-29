@@ -207,6 +207,7 @@ refreshHealth();
 refreshStats();
 refreshSummaries();
 refreshMessages().then(() => { lastTs = lastTs || Math.floor(Date.now() / 1000) - 3600; });
+loadConfigState();
 
 // 轮询
 setInterval(refreshHealth, 15000);
@@ -218,3 +219,148 @@ setInterval(refreshMessages, 3000);
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/sw.js').catch(() => {});
 }
+
+// ---------------------------------------------------------------- 设置面板
+const $ = id => document.getElementById(id);
+
+function openSettings() {
+  $('settings-mask').hidden = false;
+  $('test-result').textContent = '';
+  $('test-result').className = 'field-hint';
+  loadConfigState();
+  $('cfg-api-key').focus();
+}
+function closeSettings() {
+  $('settings-mask').hidden = true;
+}
+
+// 读当前配置，把「是否已填」显示出来（key 只回显掩码，不返回明文）
+async function loadConfigState() {
+  const c = await getJSON('/api/config');
+  if (!c) return;
+
+  const set = c.api_key_set;
+  const ks = $('key-state');
+  if (set) {
+    ks.textContent = `已配置（${c.api_key_masked}）· 留空则不修改`;
+    ks.className = 'field-hint set';
+  } else {
+    ks.textContent = '未配置 · 填好后点保存';
+    ks.className = 'field-hint';
+  }
+
+  // 顶部横幅 + 状态栏提示
+  $('apikey-banner').hidden = !!set;
+
+  // 只填充非敏感字段；敏感字段留空（避免覆盖）
+  $('cfg-base-url').value = c.base_url || '';
+  $('cfg-model').value = c.model || '';
+  $('cfg-vision-model').value = c.vision_model || '';
+  $('cfg-muted-rooms').value = (c.focus && c.focus.muted_rooms || []).join(', ');
+  $('cfg-active-rooms').value = (c.focus && c.focus.active_rooms || []).join(', ');
+
+  // 推送通道状态（用 placeholder 提示已有值）
+  const pc = c.push_channels || {};
+  $('cfg-serverchan').placeholder = pc.serverchan ? '已配置（留空不修改）' : 'SCTxxxxxxxx';
+  $('cfg-pushplus').placeholder = pc.pushplus ? '已配置（留空不修改）' : '选填';
+  $('cfg-wecom').placeholder = pc.wecom ? '已配置（留空不修改）' : 'webhook 地址';
+}
+
+// 收集要提交的字段（空字符串 = 不修改，后端会跳过）
+function collectConfig() {
+  const patch = {};
+  const put = (key, el) => {
+    const v = $(el).value.trim();
+    if (v) patch[key] = v;
+  };
+  put('ai.api_key', 'cfg-api-key');
+  put('ai.base_url', 'cfg-base-url');
+  put('ai.model', 'cfg-model');
+  put('ai.vision_model', 'cfg-vision-model');
+  put('focus.muted_rooms', 'cfg-muted-rooms');
+  put('focus.active_rooms', 'cfg-active-rooms');
+  put('push.serverchan_key', 'cfg-serverchan');
+  put('push.pushplus_token', 'cfg-pushplus');
+  put('push.wecom_webhook', 'cfg-wecom');
+  return patch;
+}
+
+async function saveSettings() {
+  const st = $('save-state');
+  const patch = collectConfig();
+  if (!Object.keys(patch).length) {
+    st.textContent = '没有要保存的改动';
+    st.className = 'save-state';
+    setTimeout(() => (st.textContent = ''), 3000);
+    return;
+  }
+
+  $('settings-save').disabled = true;
+  st.textContent = '保存中…';
+  st.className = 'save-state';
+
+  const r = await getJSON('/api/config', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  });
+
+  $('settings-save').disabled = false;
+  if (r && r.ok) {
+    st.textContent = `已保存 ${r.written.length} 项`;
+    st.className = 'save-state ok';
+    // 清空敏感输入框（避免停留在页面上）
+    $('cfg-api-key').value = '';
+    $('cfg-serverchan').value = '';
+    $('cfg-pushplus').value = '';
+    $('cfg-wecom').value = '';
+    await loadConfigState();
+    setTimeout(() => (st.textContent = ''), 4000);
+  } else {
+    st.textContent = (r && r.error) ? r.error : '保存失败';
+    st.className = 'save-state bad';
+  }
+}
+
+async function testAI() {
+  const out = $('test-result');
+  out.textContent = '测试中…';
+  out.className = 'field-hint';
+  const r = await getJSON('/api/test_ai', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      api_key: $('cfg-api-key').value.trim(),   // 留空则用已保存的
+      model: $('cfg-model').value.trim(),
+      base_url: $('cfg-base-url').value.trim(),
+    }),
+  });
+  if (r && r.ok) {
+    out.textContent = `连接正常 · ${r.model} · 模型回复「${r.reply}」`;
+    out.className = 'field-hint ok';
+  } else {
+    out.textContent = (r && r.error) ? r.error : '测试失败';
+    out.className = 'field-hint bad';
+  }
+}
+
+$('btn-settings').addEventListener('click', openSettings);
+$('banner-open').addEventListener('click', openSettings);
+$('settings-close').addEventListener('click', closeSettings);
+$('settings-cancel').addEventListener('click', closeSettings);
+$('settings-save').addEventListener('click', saveSettings);
+$('btn-test-ai').addEventListener('click', testAI);
+$('settings-mask').addEventListener('click', e => {
+  if (e.target === $('settings-mask')) closeSettings();
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && !$('settings-mask').hidden) closeSettings();
+});
+
+// 显示/隐藏 key
+$('btn-toggle-key').addEventListener('click', () => {
+  const inp = $('cfg-api-key');
+  const show = inp.type === 'password';
+  inp.type = show ? 'text' : 'password';
+  $('btn-toggle-key').textContent = show ? '隐藏' : '显示';
+});

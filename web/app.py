@@ -26,6 +26,7 @@ from fastapi import FastAPI, Query
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from core import config as cfgmod
 from core.config import load
 from core.engine import Engine
 
@@ -36,7 +37,7 @@ if hasattr(sys, "_MEIPASS"):
 else:
     STATIC_DIR = os.path.join(BASE_DIR, "web", "static")
 
-app = FastAPI(title="微信消息 AI 助手", version="1.1.0")
+app = FastAPI(title="微信消息 AI 助手", version="1.2.0")
 engine: Engine = None
 
 
@@ -119,15 +120,85 @@ def selection_config():
 
 @app.get("/api/config")
 def config():
+    """配置概览（**不回传完整 key**，只回显掩码后的形式）"""
     cfg = engine.cfg if engine is not None else load()
+    ai = cfg["ai"]
     return {
         "message_source": cfg["message_source"]["type"],
-        "model": cfg["ai"]["model"],
+        "model": ai["model"],
+        "base_url": ai.get("base_url", ""),
+        "api_key_set": bool(ai.get("api_key")),
+        "api_key_masked": cfgmod.mask_key(ai.get("api_key", "")),
+        "vision_model": ai.get("vision_model", ""),
         "schedule": cfg["schedule"],
         "video_enabled": cfg["video"]["enabled"],
         "backfill_enabled": cfg.get("backfill", {}).get("enabled", True),
         "push_channels": _push_channels(cfg),
+        "focus": {
+            "muted_rooms": cfg["focus"].get("muted_rooms", []),
+            "active_rooms": cfg["focus"].get("active_rooms", []),
+            "notify_at_me": cfg["focus"].get("notify_at_me", True),
+        },
+        "selection": {
+            "hotkey": cfg["selection"].get("hotkey", "ctrl+alt+d"),
+        },
     }
+
+
+@app.post("/api/config")
+def save_config(payload: dict = None):
+    """
+    从网页界面保存配置（写回 config.yaml）。
+    body: {"ai.api_key": "sk-...", "ai.model": "deepseek-chat", ...}
+    空字符串 = 不修改（保护已填的 key 不被误清空）。
+    """
+    global engine
+    payload = payload or {}
+    try:
+        res = cfgmod.update(payload)
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": f"写入失败：{e}"}, status_code=500)
+
+    # 让内存里的 engine 立刻用上新配置（不用重启）
+    try:
+        new_cfg = load()
+        if engine is not None:
+            engine.cfg = new_cfg
+            s = getattr(engine, "summarizer", None)
+            if s is not None and hasattr(s, "reload"):
+                s.reload()
+            elif s is not None:
+                s.cfg = new_cfg
+    except Exception:
+        pass
+
+    return {"ok": True, "written": res["written"]}
+
+
+@app.post("/api/test_ai")
+def test_ai(payload: dict = None):
+    """测试 AI 连接：填了 key 但不确定通不通时用。"""
+    payload = payload or {}
+    cfg = load()
+    key = (payload.get("api_key") or "").strip() or cfg["ai"].get("api_key", "")
+    model = (payload.get("model") or "").strip() or cfg["ai"].get("model", "deepseek-chat")
+    base = (payload.get("base_url") or "").strip() or cfg["ai"].get("base_url", "https://api.deepseek.com/v1")
+
+    if not key:
+        return {"ok": False, "error": "还没填 API key"}
+
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=key, base_url=base, timeout=20)
+        r = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": "仅回复两个字：可用"}],
+            max_tokens=10,
+        )
+        reply = (r.choices[0].message.content or "").strip()
+        return {"ok": True, "model": model, "base_url": base, "reply": reply[:50]}
+    except Exception as e:
+        return {"ok": False, "error": f"{type(e).__name__}: {str(e)[:200]}"}
 
 
 def _push_channels(cfg: dict) -> dict:

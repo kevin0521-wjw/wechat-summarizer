@@ -1,6 +1,6 @@
 # 微信消息 AI 助手（WeChat Summarizer）
 
-**当前版本：v1.1.0**
+**当前版本：v1.2.0**
 
 电脑微信登录时后台监听消息，AI 实时总结群聊/视频链接，**选中即分析并悬浮显示**，多端推送。一套 Python 后端，四种使用形态：
 
@@ -186,18 +186,33 @@ python scripts/setup_optional.py
 > ```bash
 > python web/app.py --no-listener     # 浏览器开 http://127.0.0.1:8080
 > ```
-> 界面能打开、能看统计/汇总，说明环境没问题，再按下面接真实消息源。
+> 界面能打开 → 点右上角**「设置」**填 DeepSeek key → 点**「测试连接」**确认通了，
+> 环境就没问题，再按下面接真实消息源。
 
 ### 1. 配置
 
-复制 `config.yaml`，填入：
-- `ai.api_key`：DeepSeek key（必填）
-- `ai.vision_model`：**可选**，表情包/图片识别用的多模态模型（DeepSeek 无视觉能力，可填 `qwen-vl-max` / `gpt-4o-mini` 等）
-- `push.*`：推送通道（悬浮窗默认开；Server酱 / PushPlus / 企微 webhook 至少填一个用于手机端）
-- `focus.muted_rooms`：**免打扰 / 折叠群** → 每周汇总一次
-- `focus.active_rooms`：**活跃群** → 每天出统计（留空则自动取当天消息量 top 5）
-- `focus.notify_at_me`：`true` 时有人 @我 → 实时抽出推送
-- `selection.hotkey`：选中分析热键（默认 `ctrl+alt+d`）
+#### 方式 A：网页界面填（推荐，不用碰文件）
+
+启动网页版后，点右上角 **「设置」** 按钮，在弹窗里填：
+
+| 字段 | 说明 |
+|---|---|
+| **API Key** | DeepSeek key，**必填**（[申请地址](https://platform.deepseek.com/api_keys)） |
+| **Base URL** | 默认 `https://api.deepseek.com/v1`，用中转/其他兼容接口时改这里 |
+| **模型** | `deepseek-chat`（快）/ `deepseek-reasoner`（推理强） |
+| **视觉模型** | 可选，表情包识别用（DeepSeek 无视觉，可填 `qwen-vl-max` 等） |
+| **免打扰/折叠群** | 逗号分隔的群名 → 每周汇总一次 |
+| **活跃群** | 逗号分隔的群名（留空则自动取当天消息量 Top 5） |
+| **推送通道** | Server酱 / PushPlus / 企微 webhook，选填 |
+
+填完点 **「保存」**，**立即生效、不用重启**。旁边有 **「测试连接」** 按钮，可以先验证 key 通不通再走。
+
+> 🔒 安全设计：保存后只回显掩码（如 `sk-ab****yz`），**明文 key 永远不会再传回浏览器**；
+> 输入框留空 = 不修改（防止误清空已填的 key）；只允许写白名单里的键，改不到别的地方。
+
+#### 方式 B：直接编辑 `config.yaml`
+
+不习惯用界面的话，也可以直接改文件（字段含义同上）：
 
 ### 2. 各端启动
 
@@ -265,6 +280,16 @@ npm run dist                            # 产物 desktop/release/ 下的 exe / N
 MIT
 
 ## 九、更新日志
+
+### v1.2.0（2026-09-30）
+- **网页界面可直接填 API Key**：右上角新增「设置」按钮，弹窗里配 DeepSeek key / Base URL / 模型 / 视觉模型 / 群分组 / 推送通道，**保存即生效不用重启**。
+- 新增 **「测试连接」** 按钮：填完 key 当场验证通不通，省得猜。
+- 未配置 key 时顶部显示提示条，一键跳设置。
+- **安全设计**：key 只以掩码回显（`sk-ab****yz`），明文不再传回浏览器；输入框留空 = 不修改；写入走白名单，改不到其他配置键。
+- `core/config.py` 新增 `update()` / `mask_key()`，原子写（临时文件 + replace，写崩不坏配置）。
+- `core/summarizer.py` 支持热重载配置（保存后无需重启即可用新 key）。
+- 新增 `tools/verify-settings.mjs`：headless 浏览器自检设置面板（9 项断言）。
+- README「五、快速开始 → 配置」改为「界面填 / 改文件」两种方式并列。
 
 ### v1.1.0（2026-09-29）
 - **新增 `scripts/doctor.py` 环境自检**：一条命令查 Python/依赖/protobuf/微信版本/wxdump/配置/端口/Node，末尾给出「你这台机器能用什么」的结论。

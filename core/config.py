@@ -70,3 +70,99 @@ def _migrate(cfg: dict) -> None:
     cfg.setdefault("focus", {}).setdefault("active_rooms", [])
     cfg["focus"].setdefault("notify_at_me", True)
     cfg.setdefault("ai", {}).setdefault("vision_model", "")
+
+
+# ---------------------------------------------------------------------------
+# 写回：从网页界面保存配置（只改用户提交的键，其余保持原样）
+# ---------------------------------------------------------------------------
+
+# 允许网页界面写入的路径白名单（防止任意键被覆盖）
+_WRITABLE = {
+    "ai.base_url", "ai.api_key", "ai.model", "ai.max_tokens", "ai.vision_model",
+    "message_source.type", "message_source.weflow_base",
+    "push.serverchan_key", "push.pushplus_token", "push.wecom_webhook",
+    "push.toast", "push.overlay",
+    "focus.muted_rooms", "focus.active_rooms", "focus.notify_at_me",
+    "video.enabled", "video.fetch_comments",
+    "schedule.muted_group_weekly", "schedule.daily_stats",
+    "selection.hotkey", "selection.overlay.enabled",
+    "backfill.enabled", "backfill.lookback_hours",
+}
+
+
+def _set_path(d: dict, path: str, value) -> None:
+    """按点号路径写值，中间层不存在则创建"""
+    keys = path.split(".")
+    cur = d
+    for k in keys[:-1]:
+        nxt = cur.get(k)
+        if not isinstance(nxt, dict):
+            nxt = {}
+            cur[k] = nxt
+        cur = nxt
+    cur[keys[-1]] = value
+
+
+def _get_path(d: dict, path: str, default=None):
+    cur = d
+    for k in path.split("."):
+        if not isinstance(cur, dict) or k not in cur:
+            return default
+        cur = cur[k]
+    return cur
+
+
+def update(patch: dict, path: str = CONFIG_PATH) -> dict:
+    """
+    把网页界面提交的部分配置合并进 config.yaml 并落盘。
+
+    - 只接受 _WRITABLE 白名单里的键（其余忽略）
+    - 值为 None / 空字符串且原值非空 时：视为「不改动」（避免误清空已有 key）
+    - 返回实际写入的键列表
+    """
+    # 读原始文件（不套默认值，避免把默认值一股脑写进去）
+    raw = {}
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as f:
+            raw = yaml.safe_load(f) or {}
+    if not isinstance(raw, dict):
+        raw = {}
+
+    written = []
+    for key, val in (patch or {}).items():
+        if key not in _WRITABLE:
+            continue
+        if val is None:
+            continue
+        if isinstance(val, str):
+            val = val.strip()
+            # 空字符串 = 不修改（保护已填的 key 不被误清空）
+            if val == "":
+                continue
+            if key in ("focus.muted_rooms", "focus.active_rooms"):
+                # 逗号/换行分隔 → 列表
+                val = [x.strip() for x in val.replace("，", ",").replace("\n", ",").split(",") if x.strip()]
+            elif key == "ai.max_tokens":
+                try:
+                    val = int(val)
+                except ValueError:
+                    continue
+        _set_path(raw, key, val)
+        written.append(key)
+
+    # 原子写：先写临时文件再替换，避免写一半崩了把配置弄坏
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        yaml.safe_dump(raw, f, allow_unicode=True, sort_keys=False, default_flow_style=False)
+    os.replace(tmp, path)
+    return {"written": written}
+
+
+def mask_key(key: str) -> str:
+    """把 key 变成 'sk-ab****yz' 形式，用于回显（绝不返回完整 key）"""
+    if not key:
+        return ""
+    k = str(key)
+    if len(k) <= 8:
+        return "*" * len(k)
+    return f"{k[:5]}{'*' * 6}{k[-4:]}"

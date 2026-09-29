@@ -19,8 +19,18 @@
         <p class="sub">后台监听 · AI 总结 · 多端推送</p>
       </div>
     </div>
-    <div class="status"><span id="status-dot" class="dot"></span><span id="status-text">连接中…</span></div>
+    <div class="topbar-right">
+      <button class="btn btn-ghost btn-sm" id="btn-settings">
+        <span class="gear"></span>设置
+      </button>
+      <div class="status"><span id="status-dot" class="dot"></span><span id="status-text">连接中…</span></div>
+    </div>
   </header>
+
+  <div class="apikey-banner" id="apikey-banner" hidden>
+    <span>还没配置 DeepSeek API key，AI 分析功能不可用。</span>
+    <button class="btn btn-sm" id="banner-open">现在去填</button>
+  </div>
 
   <main>
     <!-- 统计卡片 -->
@@ -86,6 +96,105 @@
       </div>
     </section>
   </main>
+
+  <!-- 设置面板（API key 等在这里填） -->
+  <div class="modal-mask" id="settings-mask" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+      <div class="modal-head">
+        <h2 id="settings-title">设置</h2>
+        <button class="icon-btn" id="settings-close" aria-label="关闭">×</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="field-group">
+          <div class="group-title">AI 接口（DeepSeek / 任意 OpenAI 兼容）</div>
+
+          <label class="field">
+            <span class="label">API Key <b class="req">必填</b></span>
+            <div class="input-row">
+              <input type="password" id="cfg-api-key" autocomplete="off" spellcheck="false"
+                     placeholder="sk-xxxxxxxxxxxxxxxx">
+              <button class="btn btn-ghost btn-sm" id="btn-toggle-key" type="button">显示</button>
+            </div>
+            <span class="field-hint" id="key-state">未配置</span>
+          </label>
+
+          <label class="field">
+            <span class="label">Base URL</span>
+            <input type="text" id="cfg-base-url" autocomplete="off" spellcheck="false"
+                   placeholder="https://api.deepseek.com/v1">
+            <span class="field-hint">默认 DeepSeek。用别的兼容接口（如中转）改这里。</span>
+          </label>
+
+          <label class="field">
+            <span class="label">模型</span>
+            <input type="text" id="cfg-model" autocomplete="off" spellcheck="false"
+                   placeholder="deepseek-chat">
+            <span class="field-hint">deepseek-chat（快）/ deepseek-reasoner（推理强）</span>
+          </label>
+
+          <div class="test-row">
+            <button class="btn btn-ghost btn-sm" id="btn-test-ai" type="button">测试连接</button>
+            <span class="field-hint" id="test-result"></span>
+          </div>
+        </div>
+
+        <div class="field-group">
+          <div class="group-title">表情包识别（可选）</div>
+          <label class="field">
+            <span class="label">视觉模型</span>
+            <input type="text" id="cfg-vision-model" autocomplete="off" spellcheck="false"
+                   placeholder="qwen-vl-max / gpt-4o-mini / glm-4v">
+            <span class="field-hint">DeepSeek 暂无视觉模型，留空则表情包走文字判断。</span>
+          </label>
+        </div>
+
+        <div class="field-group">
+          <div class="group-title">群分组</div>
+          <label class="field">
+            <span class="label">免打扰 / 折叠群</span>
+            <input type="text" id="cfg-muted-rooms" autocomplete="off"
+                   placeholder="群名A, 群名B, 群名C">
+            <span class="field-hint">逗号分隔。这些群 → 每周汇总一次。</span>
+          </label>
+          <label class="field">
+            <span class="label">活跃群</span>
+            <input type="text" id="cfg-active-rooms" autocomplete="off"
+                   placeholder="群名D, 群名E">
+            <span class="field-hint">逗号分隔。留空则自动取当天消息量 Top 5。</span>
+          </label>
+        </div>
+
+        <div class="field-group">
+          <div class="group-title">推送通道（可选，可多开）</div>
+          <label class="field">
+            <span class="label">Server 酱 SendKey</span>
+            <input type="password" id="cfg-serverchan" autocomplete="off" spellcheck="false"
+                   placeholder="SCTxxxxxxxx">
+          </label>
+          <label class="field">
+            <span class="label">PushPlus Token</span>
+            <input type="password" id="cfg-pushplus" autocomplete="off" spellcheck="false"
+                   placeholder="选填">
+          </label>
+          <label class="field">
+            <span class="label">企业微信群机器人 Webhook</span>
+            <input type="password" id="cfg-wecom" autocomplete="off" spellcheck="false"
+                   placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=...">
+          </label>
+          <span class="field-hint">留空 = 不修改已填的值。桌面 Toast 与落盘 txt 默认开启。</span>
+        </div>
+      </div>
+
+      <div class="modal-foot">
+        <span class="save-state" id="save-state"></span>
+        <div class="foot-btns">
+          <button class="btn btn-ghost" id="settings-cancel">取消</button>
+          <button class="btn" id="settings-save">保存</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <script src="/static/app.js"></script>
 </body>
