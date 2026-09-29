@@ -1,12 +1,59 @@
-# 微信消息实时分析 + AI 总结 + 推送 —— 依赖清单
-# 用托管 Python 装：pip install -r requirements.txt
+# ============================================================================
+# 微信消息 AI 助手 —— Python 依赖清单
+# ============================================================================
+# 安装：pip install -r requirements.txt
+#       国内建议加镜像（清华对 pip 会返回 403，用腾讯云）：
+#       pip install -r requirements.txt -i https://mirrors.cloud.tencent.com/pypi/simple
+#       若本机开着 Clash 等代理导致 pip 卡住：先 unset HTTP_PROXY HTTPS_PROXY
+#
+# 运行环境：Python 3.10 - 3.13（实测 3.13.14 可用）
+# ----------------------------------------------------------------------------
 
-wcferry          # WeChatFerry 的 Python 客户端（实时监听/收发消息/下载视频文件）
-requests         # HTTP 请求（调 WeFlow API / 推送 webhook / B站评论）
+
+# ---------- 核心（必需）----------
+wcferry          # 实时监听/收发微信消息、下载视频文件（WeChatFerry 客户端）
+                 # ⚠️ 它锁 protobuf，见文件末尾「依赖冲突」说明
+requests         # HTTP 请求（调 WeFlow API / 推送 webhook / B站评论抓取）
 pyyaml           # 读取 config.yaml
-schedule         # 轻量定时任务（每天/每周汇总）
-jieba            # 中文分词（词频/热词统计）
-yt-dlp           # 视频链接解析（下载字幕/评论，供 AI 总结）
+fastapi          # 网页版后端框架
+uvicorn          # ASGI 服务器（跑 FastAPI）
 openai           # 调 DeepSeek（OpenAI 兼容接口）做总结
-winotify         # Windows Toast 桌面通知（可选，Windows 专用）
-pywxdump         # 【可选】开机补读本地微信数据库（解密，解决「关机期间消息」）
+schedule         # 轻量定时任务（每周汇总 / 每日统计）
+jieba            # 中文分词（热词/词频统计）
+yt-dlp           # 视频链接解析：下载字幕、抓评论区、读 tag
+Pillow           # 生成图标 / 读剪贴板图片（表情包识别用）
+
+
+# ---------- 桌面端（Windows，推荐）----------
+winotify         # Windows Toast 桌面通知
+                 # 注：悬浮窗与全局热键由 Electron 提供，不需要额外 Python 包
+
+
+# ---------- 可选：开机补读微信本地库 ----------
+# 【重要】不要用 pip install pywxdump 装到主环境！它会锁 protobuf==3.10.0，
+# 把 wcferry 需要的 protobuf 降级，导致 wcferry 报
+#     ImportError: cannot import name 'builder' from 'google.protobuf.internal'
+# 正确做法（装进项目内的隔离 venv，随安装包一起分发）：
+#     python scripts/setup_optional.py
+
+# ---------- 可选：打包成 exe ----------
+# pyinstaller    # python scripts/build_backend.py 时用
+
+
+# ============================================================================
+# 依赖冲突说明（踩过的坑，务必看）
+# ============================================================================
+# 1) wcferry 39.6 的元数据声明 `protobuf==3.10.0`，但它的 wcf_pb2.py 是
+#    用新版 protoc 生成的，需要 `google.protobuf.internal.builder`
+#    —— 而 builder 是 protobuf 3.20+ 才有的。也就是说 wcferry 声明的版本
+#    本身就有问题，**装完必须手动升级 protobuf**：
+#         pip install "protobuf>=5.29"
+#    （scripts/setup_optional.py 会自动帮你修正这一步）
+#
+# 2) pywxdump 也会把 protobuf 拖回 3.10.0 → 所以它必须装到独立 venv。
+#
+# 3) Windows 上 wcferry 注入微信进程需要「微信正在运行」，且版本要匹配。
+#    **微信 4.x（Weixin.exe，如 4.1.x）支持不完整**：WeChatFerry 主要跟的是
+#    3.9.x 分支。用 4.x 时实时监听可能起不来，表现为「仅查看模式」
+#    （界面正常、但没有新消息）。这是上游限制，不是本项目 bug。
+# ============================================================================

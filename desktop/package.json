@@ -1,6 +1,6 @@
 {
   "name": "wechat-summarizer-desktop",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "微信消息 AI 助手 - 桌面版（Electron 套壳网页版）",
   "main": "main.js",
   "author": "kevin0521-wjw",
@@ -9,7 +9,8 @@
     "start": "electron .",
     "dist": "electron-builder",
     "dist:portable": "electron-builder --win portable",
-    "dist:nsis": "electron-builder --win nsis"
+    "dist:nsis": "electron-builder --win nsis",
+    "doctor": "node -e \"require('child_process').spawnSync('python',['../scripts/doctor.py'],{stdio:'inherit',shell:true})\""
   },
   "devDependencies": {
     "electron": "^31.0.0",
@@ -31,6 +32,11 @@
       {
         "from": "../backend-dist",
         "to": "backend",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "../vendor",
+        "to": "backend/vendor",
         "filter": ["**/*"]
       }
     ],

@@ -8,6 +8,14 @@
 
 依赖：pip install pywxdump（这里只调它的 CLI，不碰它不稳定的 Python API）
 
+⚠️ **强烈建议把 pywxdump 装在独立 venv**（见下）：它硬锁 `protobuf==3.10.0`，
+而主环境需要的 wcferry 要求 `protobuf>=5.29`（3.10.0 没有 `google.protobuf.internal.builder`，
+会让 wcferry 直接 ImportError）。两个包在同一环境里**无法共存**。
+本模块会自动去下面这几个位置找 `wxdump` 可执行文件：
+  1. PATH 上的 `wxdump`
+  2. 项目内的 `vendor/pywxdump_venv/Scripts/wxdump.exe`（随仓库一起分发）
+  3. `~/.workbuddy/binaries/python/envs/wxdump/Scripts/wxdump.exe`（本机独立环境）
+
 流程：
   wxdump wx_info   → 拿数据库密钥 key + 数据目录
   wxdump decrypt   → 解密出明文 .db
@@ -17,11 +25,15 @@
   1. wxdump 各子命令输出格式随版本变化 → 解析集中在 get_wechat_key_and_dir()
   2. 微信 3.x / 4.0 库文件名与消息表名不同 → 用候选列表遍历
   3. PyWxDump 从内存取 key，要求微信正在运行；解密大库需几分钟
+  4. **微信 4.x（Weixin.exe / 4.1.x）的库结构和 3.9.x 差异大**，
+     PyWxDump 3.1.46 对 4.x 支持不完整，wx_info 可能取不到 key —— 这时补读会静默跳过，
+     不影响实时监听（wcferry）和其它功能。
 
 参考：WeChatMsg/留痕（LC044）底层用的就是 PyWxDump（xaoyaoo/PyWxDump）的解密能力。
 """
 import os
 import re
+import sys
 import time
 import sqlite3
 import subprocess
@@ -31,21 +43,97 @@ from typing import Callable, Optional
 MSG_TABLE_CANDIDATES = ["MSG", "Message", "message", "ChatMsg", "msg"]
 
 
+def _find_wxdump() -> Optional[str]:
+    """
+    定位 wxdump 可执行文件。按以下顺序找：
+      1) 环境变量 WXDUMP_BIN（显式指定）
+      2) 项目内 vendor/pywxdump_venv（随安装包分发，最优先，因为有隔离的 protobuf）
+      3) 本机 ~/.workbuddy/binaries/python/envs/wxdump（独立 venv）
+      4) PATH 上的 wxdump
+    找不到返回 None。
+    """
+    exe = "wxdump.exe" if os.name == "nt" else "wxdump"
+
+    # 1) 显式指定
+    env_bin = os.environ.get("WXDUMP_BIN")
+    if env_bin and os.path.exists(env_bin):
+        return env_bin
+
+    # 2) 项目内（打包后资源在 sys._MEIPASS；开发时在包目录旁边）
+    roots = []
+    if hasattr(sys, "_MEIPASS"):
+        roots.append(sys._MEIPASS)
+    here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    roots.append(here)
+    for root in roots:
+        for rel in (os.path.join("vendor", "pywxdump_venv", "Scripts", exe),
+                    os.path.join("vendor", "pywxdump_venv", "bin", exe)):
+            p = os.path.join(root, rel)
+            if os.path.exists(p):
+                return p
+
+    # 3) 本机独立 venv
+    home = os.environ.get("USERPROFILE") or os.path.expanduser("~")
+    for rel in (("Scripts", exe), ("bin", exe)):
+        p = os.path.join(home, ".workbuddy", "binaries", "python",
+                         "envs", "wxdump", *rel)
+        if os.path.exists(p):
+            return p
+
+    # 4) PATH
+    from shutil import which
+    found = which("wxdump")
+    if found:
+        return found
+    return None
+
+
+# 缓存查找结果，避免每条消息都去 stat 文件
+_WXDUMP_CACHE = {"path": None, "checked": False}
+
+
+def wxdump_bin() -> Optional[str]:
+    if not _WXDUMP_CACHE["checked"]:
+        _WXDUMP_CACHE["path"] = _find_wxdump()
+        _WXDUMP_CACHE["checked"] = True
+        if _WXDUMP_CACHE["path"]:
+            print(f"[backfill] 使用 wxdump: {_WXDUMP_CACHE['path']}")
+        else:
+            print("[backfill] 未找到 wxdump（补读功能不可用；"
+                  "实时监听不受影响。安装见 README「可选依赖」）")
+    return _WXDUMP_CACHE["path"]
+
+
 def _run(cmd: list, timeout: int = 120) -> str:
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
     return (r.stdout or "") + (r.stderr or "")
 
 
 def get_wechat_key_and_dir() -> Optional[dict]:
-    """拿数据库密钥 key 与数据目录。返回 {"key","wx_dir"}；失败 None"""
-    try:
-        out = _run(["wxdump", "wx_info"])
-    except FileNotFoundError:
-        print("[backfill] 未安装 pywxdump，跳过补读（pip install pywxdump）")
+    """拿数据库密钥 key 与数据目录。返回 {"key","wx_dir"}；失败 None
+
+    ⚠️ 实测（2026-09-30，微信 4.1.15.13）：PyWxDump 3.1.46 只认微信 3.x 的
+    进程名 `WeChat.exe`，对微信 4.x 的 `Weixin.exe` 会直接报 `WeChat No Run`
+    —— 即使微信明明开着。此时本函数返回 None，补读静默跳过（不影响实时监听）。
+    """
+    bin_path = wxdump_bin()
+    if not bin_path:
+        print("[backfill] 未安装 pywxdump，跳过补读")
         return None
-    except Exception as e:
-        print(f"[backfill] wx_info 失败: {e}")
-        return None
+    # 子命令名随版本变：3.1.46 是 `info` / `wx_path`（旧版文档写的是 wx_info/wx_db）
+    out = ""
+    for sub in ("info", "wx_info"):
+        try:
+            out = _run([bin_path, sub], timeout=90)
+        except Exception as e:
+            print(f"[backfill] {sub} 调用失败: {e}")
+            continue
+        if out.strip() and "No Run" not in out:
+            break
+        if "No Run" in out:
+            print("[backfill] wxdump 报 'WeChat No Run' —— 微信未运行，"
+                  "或微信版本不受支持（4.x 的 Weixin.exe 不被 PyWxDump 3.x 识别）")
+            return None
 
     key = None
     m = re.search(r"\b[0-9a-fA-F]{64}\b", out)
@@ -57,15 +145,19 @@ def get_wechat_key_and_dir() -> Optional[dict]:
     if mdir:
         wx_dir = mdir.group(0).strip().rstrip("\\/")
     else:
-        try:
-            lines = [l for l in _run(["wxdump", "wx_db"]).splitlines() if l.strip()]
-            if lines:
-                wx_dir = lines[-1].strip().rstrip("\\/")
-        except Exception:
-            pass
+        for sub in ("wx_path", "wx_db"):
+            try:
+                lines = [l for l in _run([bin_path, sub], timeout=60).splitlines() if l.strip()]
+                # wx_path 在找不到时会抛 NoneType，这里靠异常/空行兜住
+                cand = [l for l in lines if re.search(r"[A-Za-z]:[\\/]", l)]
+                if cand:
+                    wx_dir = cand[-1].strip().rstrip("\\/")
+                    break
+            except Exception:
+                continue
 
     if not key:
-        print("[backfill] 未能解析出数据库密钥")
+        print("[backfill] 未能解析出数据库密钥（微信 4.x 常见；跳过补读不影响其它功能）")
         return None
     return {"key": key, "wx_dir": wx_dir}
 
@@ -75,7 +167,7 @@ def decrypt_db(wx_dir: str, key: str) -> Optional[str]:
     if not wx_dir:
         return None
     try:
-        out = _run(["wxdump", "decrypt", "--db-path", wx_dir, "--key", key], timeout=600)
+        out = _run([wxdump_bin(), "decrypt", "--db-path", wx_dir, "--key", key], timeout=600)
         print(f"[backfill] decrypt 完成: {out[:160]}")
     except Exception as e:
         print(f"[backfill] 解密失败: {e}")

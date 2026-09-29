@@ -13,6 +13,11 @@ build-tmp/
 release/
 *.spec
 
+# 可选依赖的隔离环境（约 100 MB，不进仓库；由 scripts/setup_optional.py 生成，
+# 打包时由 build_backend.py 复制进安装包）
+vendor/pywxdump_venv/
+vendor/**/__pycache__/
+
 # 依赖 / 打包
 node_modules/
 desktop/release/

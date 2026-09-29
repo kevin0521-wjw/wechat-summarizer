@@ -1,5 +1,7 @@
 # 微信消息 AI 助手（WeChat Summarizer）
 
+**当前版本：v1.1.0**
+
 电脑微信登录时后台监听消息，AI 实时总结群聊/视频链接，**选中即分析并悬浮显示**，多端推送。一套 Python 后端，四种使用形态：
 
 | 形态 | 说明 | 适合 |
@@ -95,25 +97,96 @@ wechat-summarizer/
 └── scripts/build_backend.py # PyInstaller 把后端打成 backend.exe（可选）
 ```
 
-## 三、快速开始
+## 四、环境要求与依赖
+
+### 运行环境
+
+| 项目 | 要求 | 说明 |
+|---|---|---|
+| **操作系统** | Windows 10/11 | 微信 hook、悬浮窗、Toast 都依赖 Windows |
+| **Python** | **3.10 – 3.13** | 实测 3.13.14 可用；3.14 部分包无 wheel |
+| **微信** | ⚠️ **见下方「微信版本」这一节** | 这是能否实时监听的关键 |
+| **Node.js** | 18+（仅桌面版需要） | 实测 Node 22.22.2 可用 |
+| **磁盘** | 约 500 MB | 含可选依赖（隔离 venv 约 100 MB） |
+| **内存** | 建议 8 GB+ | 微信本体 + 视频解析比较吃内存 |
+
+### 微信版本（最重要的一条）
+
+| 微信版本 | 实时监听（wcferry） | 开机补读（pywxdump） |
+|---|---|---|
+| **3.9.x** | ✅ 支持 | ✅ 支持 |
+| **4.0 / 4.1.x**（`Weixin.exe`） | ❌ **实测失败**（`wcf.exe 退出码 4`） | ❌ 报 `WeChat No Run` |
+
+> **实测记录（2026-09-30，微信 4.1.15.13）**：
+> - `wcferry 39.6.0.0` 能正常 import，但 `Wcf()` 初始化时 **`wcf.exe 退出码 4`** —— 注入失败
+> - `pywxdump 3.1.46` 的 `info` 直接报 **`WeChat No Run`**，尽管微信进程（`Weixin.exe`）正在运行
+>
+> 原因是 WeChatFerry / PyWxDump 主要跟进微信 **3.9.x** 分支，4.x 的进程名与库结构都变了。
+> **这是上游限制，不是本项目的 bug。**
+>
+> **三条可行路径**：
+> 1. **降级微信到 3.9.x**（最直接，但会失去 4.x 新功能）
+> 2. **等上游适配**（关注 [WeChatFerry releases](https://github.com/lich0821/WeChatFerry/releases)）
+> 3. **只用「选中即分析 + 悬浮窗」和「手动粘贴分析」** —— 这部分**完全不依赖微信 hook**，
+>    在 4.x 上也能全功能使用（见下方「无 hook 也能用」）
+
+### 无 hook 也能用的功能
+
+微信 4.x 用户仍可完整使用以下能力（不读微信进程，零封号风险）：
+
+| 功能 | 怎么用 |
+|---|---|
+| **选中即分析**（桌面版） | 微信里选中聊天记录/链接 → `Ctrl+Alt+D` → 悬浮窗出结果 |
+| 视频/链接实时解析 | 选中链接按热键，或粘贴到网页版 |
+| 聊天记录分析 | 选中后按热键（自动识别为聊天记录类型） |
+| 表情包/图片识别 | 复制图片后按热键（需配 `ai.vision_model`） |
+| 网页版手动分析 | 打开网页 → 粘贴内容 → 点「分析这段内容」 |
+| 历史汇总查看 | 网页版「历史汇总」列表 |
+
+### 安装依赖
+
+```bash
+# 1) 核心依赖
+pip install -r requirements.txt
+
+# 2) 可选依赖（开机补读微信本地库）—— 装进项目内隔离环境
+python scripts/setup_optional.py
+```
+
+> ⚠️ **国内网络注意**
+> - 清华镜像对 pip 返回 **403**（UA 反爬），换腾讯云：
+>   `-i https://mirrors.cloud.tencent.com/pypi/simple`
+> - 开着 Clash 等代理会导致 pip 卡住，先 `unset HTTP_PROXY HTTPS_PROXY`。
+>
+> ⚠️ **依赖冲突（重要的坑）**
+> - `wcferry` 的元数据声明 `protobuf==3.10.0`，但它的 pb2 文件需要
+>   `google.protobuf.internal.builder`（**protobuf 3.20+ 才有**）→ 装完必须：
+>   `pip install "protobuf>=5.29"`
+> - `pywxdump` 也会把 protobuf 拖回 3.10.0 → 所以**它必须装到独立环境**。
+>   直接 `pip install pywxdump` 会**弄坏 wcferry**。用 `scripts/setup_optional.py`
+>   自动处理（它会装进 `vendor/pywxdump_venv/` 并修好主环境 protobuf）。
+
+### 可选依赖会随安装包分发
+
+`vendor/pywxdump_venv/`（约 100 MB）会被 `scripts/build_backend.py` 复制进产物，
+再由 electron-builder 的 `extraResources` 塞进安装包。**用户装完即用，无需自己装 pywxdump。**
+
+`core/history_backfill.py` 按以下顺序自动定位 wxdump：
+
+```
+① 环境变量 WXDUMP_BIN
+② 项目内 vendor/pywxdump_venv/          ← 安装包自带的
+③ ~/.workbuddy/binaries/python/envs/wxdump/   ← 本机独立环境
+④ PATH 上的 wxdump
+```
+
+## 五、快速开始
 
 > 💡 **推荐：先只开「查看界面」验证安装**（不连微信，零风险）
 > ```bash
 > python web/app.py --no-listener     # 浏览器开 http://127.0.0.1:8080
 > ```
 > 界面能打开、能看统计/汇总，说明环境没问题，再按下面接真实消息源。
-
-### 0. 安装依赖
-
-```bash
-pip install -r requirements.txt
-```
-
-> ⚠️ 国内网络注意：
-> - 若 `pip` 从清华镜像报 **403**（UA 反爬），换腾讯云镜像：
->   `pip install -r requirements.txt -i https://mirrors.cloud.tencent.com/pypi/simple`
-> - 若开了 Clash 等代理导致 pip 卡住，先 `unset HTTP_PROXY HTTPS_PROXY` 再装。
-> - 本机自带代理时，**别把代理写进 pip 配置**，否则 `git credential fill` 会取不到值。
 
 ### 1. 配置
 
@@ -170,7 +243,7 @@ cd desktop
 npm run dist                            # 产物 desktop/release/ 下的 exe / NSIS 安装包
 ```
 
-## 四、GitHub 上现成项目（借鉴关系）
+## 六、GitHub 上现成项目（借鉴关系）
 
 | 环节 | 借鉴项目 | 用法 |
 |------|----------|------|
@@ -180,13 +253,29 @@ npm run dist                            # 产物 desktop/release/ 下的 exe / N
 | 视频解析 | [video-link-pipeline](https://github.com/yunqiasen/video-link-pipeline) | 可选后端（`vlp` 命令） |
 | 推送 | [push-all-in-one](https://github.com/CaoMeiYouRen/push-all-in-one) / Server酱 / PushPlus | 推送通道 |
 
-## 五、风险与合规（重要）
+## 七、风险与合规（重要）
 
 - **WeChatFerry 依赖微信版本匹配**，微信升级可能失效，需跟进项目 release。
 - **个人号自动回复有封号风险**：默认只「出候选不自动发」。
 - **PyWxDump 从内存取 key**，要求微信正在运行；仅用于备份自己的数据。
 - 所有数据本地处理，`config.yaml` 含 key，**勿提交到公开仓库**（已加 .gitignore 提示）。
 
-## 六、License
+## 八、License
 
 MIT
+
+## 九、更新日志
+
+### v1.1.0（2026-09-29）
+- **新增 `scripts/doctor.py` 环境自检**：一条命令查 Python/依赖/protobuf/微信版本/wxdump/配置/端口/Node，末尾给出「你这台机器能用什么」的结论。
+- **新增 `scripts/setup_optional.py`**：一键把可选依赖（pywxdump）装进项目内隔离环境 `vendor/pywxdump_venv`，避开 protobuf 版本冲突。
+- **可选依赖随安装包分发**：electron-builder `extraResources` 增加 `vendor` 复制项，打包后端时一并带上，用户开箱即用。
+- **README 新增「四、环境要求与依赖」**：运行环境表、微信版本对照表、无 hook 也能用的功能表、依赖安装、随包分发说明。
+- **requirements.txt 重写**：分「核心 / 桌面端 / 可选」三段，并写明 protobuf 冲突与微信 4.x 限制。
+- 版本号统一提升至 1.1.0（desktop/package.json、web/app.py）。
+
+### v1.0.0（2026-09-28）
+- 首次发布：CLI / 网页版 / PWA / Electron 桌面版四端架构。
+- 「选中 → Ctrl+Alt+D → 悬浮出结果」链路打通（视频/链接/聊天记录/长文字/表情包）。
+- 分层汇总：免打扰群每周、活跃群每天、@我实时、视频实时。
+
