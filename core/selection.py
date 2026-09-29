@@ -274,13 +274,20 @@ class SelectionAnalyzer:
         return {"kind": "text", "title": "内容分析", "text": out}
 
     def _analyze_video(self, url: str, origin_text: str) -> dict:
-        from core.video_parser import collect_video, try_pipeline
         title = url[:40]
+        if not self.summarizer:
+            return {"kind": "video", "title": f"视频链接 · {title}",
+                    "text": "[未配置 AI key，跳过总结]", "url": url}
+        from core.video_parser import collect_video, try_pipeline
         summary = None
         if self.cfg.get("video", {}).get("use_pipeline"):
             summary = try_pipeline(url)
         if not summary:
-            v = collect_video(url)
+            try:
+                v = collect_video(url)
+            except Exception as e:
+                return {"kind": "video", "title": f"视频解析失败 · {title}",
+                        "text": f"解析失败（可能需要 cookies 或网络不通）：{e}", "url": url}
             summary = self.summarizer.summarize_video(
                 v.get("title", ""), v.get("subtitle") or "", v.get("tags"), v.get("comments"))
             title = v.get("title") or title
