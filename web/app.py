@@ -37,7 +37,7 @@ if hasattr(sys, "_MEIPASS"):
 else:
     STATIC_DIR = os.path.join(BASE_DIR, "web", "static")
 
-app = FastAPI(title="微信消息 AI 助手", version="1.2.0")
+app = FastAPI(title="微信消息 AI 助手", version="1.2.1")
 engine: Engine = None
 
 

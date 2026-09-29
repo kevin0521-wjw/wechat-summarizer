@@ -1,6 +1,6 @@
 {
   "name": "wechat-summarizer-desktop",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "微信消息 AI 助手 - 桌面版（Electron 套壳网页版）",
   "main": "main.js",
   "author": "kevin0521-wjw",
