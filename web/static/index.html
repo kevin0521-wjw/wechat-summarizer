@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>微信消息 AI 助手</title>
+  <meta name="theme-color" content="#07C160">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/static/icon-192.png">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <img src="/static/icon.svg" alt="" class="logo">
+      <div>
+        <h1>微信消息 AI 助手</h1>
+        <p class="sub">后台监听 · AI 总结 · 多端推送</p>
+      </div>
+    </div>
+    <div class="status"><span id="status-dot" class="dot"></span><span id="status-text">连接中…</span></div>
+  </header>
+
+  <main>
+    <!-- 统计卡片 -->
+    <section class="grid stats">
+      <div class="card">
+        <div class="card-title">消息总数</div>
+        <div class="big-num" id="stat-total">—</div>
+      </div>
+      <div class="card span2">
+        <div class="card-title">热词 Top</div>
+        <div class="tags" id="stat-words">暂无数据</div>
+      </div>
+      <div class="card">
+        <div class="card-title">微信表情 Top</div>
+        <div class="tags" id="stat-wxemoji">暂无数据</div>
+      </div>
+      <div class="card">
+        <div class="card-title">Emoji Top</div>
+        <div class="tags" id="stat-emoji">暂无数据</div>
+      </div>
+    </section>
+
+    <!-- 操作 -->
+    <section class="actions">
+      <button class="btn" id="btn-daily">立即生成每日汇总</button>
+      <button class="btn btn-ghost" id="btn-weekly">生成周报</button>
+      <span class="hint" id="action-hint"></span>
+    </section>
+
+    <!-- 双栏：消息流 + 汇总 -->
+    <section class="grid twocol">
+      <div class="card">
+        <div class="card-title">实时消息流</div>
+        <ul class="feed" id="feed"><li class="empty">等待新消息…</li></ul>
+      </div>
+      <div class="card">
+        <div class="card-title">历史汇总</div>
+        <ul class="feed" id="summaries"><li class="empty">暂无汇总</li></ul>
+      </div>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

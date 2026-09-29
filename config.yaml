@@ -1,0 +1,66 @@
+# ============ 微信消息 AI 助手 配置 ============
+
+# 消息源：weflow（你已在用的 WeFlow HTTP API）或 wcferry（注入微信进程）
+message_source:
+  type: wcferry          # weflow | wcferry
+  # WeFlow 本地 API 地址（type=weflow 时生效）
+  weflow_base: "http://127.0.0.1:5031"
+
+# AI 总结（DeepSeek，OpenAI 兼容接口）
+ai:
+  base_url: "https://api.deepseek.com/v1"
+  api_key: "sk-xxxxxxxx"          # 换成你的 key
+  model: "deepseek-chat"
+  max_tokens: 800
+
+# 视频/链接解析
+video:
+  enabled: true
+  # 视频平台域名白名单（命中才走「下载字幕→AI 总结」）
+  platforms:
+    - bilibili.com
+    - b23.tv
+    - youtube.com
+    - youtu.be
+    - douyin.com
+    - v.douyin.com
+    - xiaohongshu.com
+    - kuaishou.com
+    - weibo.com
+  # 是否抓评论区（YouTube 走 yt-dlp，B站走 wbi 签名直连；失败静默降级）
+  fetch_comments: true
+  # 是否优先用 video-link-pipeline（需自行安装 `vlp` 命令；否则用本地 yt-dlp 流程）
+  use_pipeline: false
+
+# 汇总频率（秒）
+schedule:
+  muted_group_daily: "21:00"      # 免打扰/折叠群：每天 21:00 汇总一次
+  weekly_report: "mon 09:00"      # 每周一 09:00 出周报
+  realtime_video: true            # 好友发视频/链接 → 实时解析并推送
+
+# 推送通道（可多个同时开）
+push:
+  # Server 酱（推送到你微信服务号） https://sct.ftqq.com
+  serverchan_key: ""              # SCT 开头的 SendKey
+  # PushPlus  https://www.pushplus.plus
+  pushplus_token: ""
+  # 企业微信群机器人 webhook（推到你自己的企微群）
+  wecom_webhook: ""
+  # 桌面 Toast 通知（Windows，电脑在线时最直观）
+  toast: true
+  # 落盘 txt（兜底，永远可用）
+  txt_file: "output/summary.txt"
+
+# 关注的私聊对象 / 群（空 = 全部关注；填 wxid 或群名则只关注这些）
+focus:
+  contacts: []        # 例如 ["wxid_xxx"]，留空表示全部
+  muted_rooms: []     # 免打扰群列表（这些群走「每日汇总」而非实时）
+
+# 数据落库
+db:
+  path: "data/msgs.db"
+
+# 开机补读本地库（解决「关机期间消息」）：解密微信本地数据库，补读漏掉的消息
+backfill:
+  enabled: true           # 关闭则不做补读
+  lookback_hours: 24      # 首次运行时只补最近 24h（后续按上次运行时间补）

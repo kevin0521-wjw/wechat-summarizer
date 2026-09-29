@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# 数据 / 运行时产物
+data/
+output/
+backend-dist/
+build-tmp/
+release/
+*.spec
+
+# 依赖 / 打包
+node_modules/
+desktop/release/
+
+# 敏感配置（含 key，勿提交）
+config.local.yaml
+
+# 系统 / 编辑器
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.log

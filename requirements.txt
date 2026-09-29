@@ -1,0 +1,12 @@
+# 微信消息实时分析 + AI 总结 + 推送 —— 依赖清单
+# 用托管 Python 装：pip install -r requirements.txt
+
+wcferry          # WeChatFerry 的 Python 客户端（实时监听/收发消息/下载视频文件）
+requests         # HTTP 请求（调 WeFlow API / 推送 webhook / B站评论）
+pyyaml           # 读取 config.yaml
+schedule         # 轻量定时任务（每天/每周汇总）
+jieba            # 中文分词（词频/热词统计）
+yt-dlp           # 视频链接解析（下载字幕/评论，供 AI 总结）
+openai           # 调 DeepSeek（OpenAI 兼容接口）做总结
+winotify         # Windows Toast 桌面通知（可选，Windows 专用）
+pywxdump         # 【可选】开机补读本地微信数据库（解密，解决「关机期间消息」）

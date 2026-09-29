@@ -1,0 +1,41 @@
+{
+  "name": "wechat-summarizer-desktop",
+  "version": "1.0.0",
+  "description": "微信消息 AI 助手 - 桌面版（Electron 套壳网页版）",
+  "main": "main.js",
+  "author": "kevin0521-wjw",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.kevin.wechat-summarizer",
+    "productName": "微信消息AI助手",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "main.js"
+    ],
+    "extraResources": [
+      {
+        "from": "../backend-dist",
+        "to": "backend",
+        "filter": ["**/*"]
+      }
+    ],
+    "win": {
+      "target": ["portable", "nsis"],
+      "icon": "../web/static/icon-512.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}
