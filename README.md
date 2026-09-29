@@ -258,6 +258,19 @@ cd desktop
 npm run dist                            # 产物 desktop/release/ 下的 exe / NSIS 安装包
 ```
 
+### 3. 自检（排查问题时先跑这个）
+
+```bash
+# 环境自检：Python/依赖/protobuf/微信版本/wxdump/配置/端口/Node
+python scripts/doctor.py
+
+# 网页版全链路自检（需先启动网页版；用 headless Edge，11 项断言）
+node tools/smoke-web.mjs
+
+# 设置面板自检（9 项断言）
+node tools/verify-settings.mjs
+```
+
 ## 六、GitHub 上现成项目（借鉴关系）
 
 | 环节 | 借鉴项目 | 用法 |
@@ -289,6 +302,7 @@ MIT
 - `core/config.py` 新增 `update()` / `mask_key()`，原子写（临时文件 + replace，写崩不坏配置）。
 - `core/summarizer.py` 支持热重载配置（保存后无需重启即可用新 key）。
 - 新增 `tools/verify-settings.mjs`：headless 浏览器自检设置面板（9 项断言）。
+- 新增 `tools/smoke-web.mjs`：网页版全链路冒烟（11 项断言：各接口 + PWA 资源 + 界面区块）。
 - README「五、快速开始 → 配置」改为「界面填 / 改文件」两种方式并列。
 
 ### v1.1.0（2026-09-29）
