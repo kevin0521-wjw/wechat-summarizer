@@ -243,6 +243,17 @@ python web/app.py            # 浏览器开 http://127.0.0.1:8080
 # 「添加到主屏幕」→ 像 App 一样全屏使用
 ```
 
+**想在后台常驻**（关掉终端也不停，推荐）：
+```bash
+python tools/serve-detached.py             # 默认 8090，起来后自动做健康检查
+python tools/serve-detached.py --status    # 看是否在跑
+python tools/serve-detached.py --stop      # 停掉
+```
+> 为什么要用它：在部分受限环境（如 WorkBuddy 沙箱）里用 bash 的 `&` / `nohup` 启动
+> `web/app.py` 时，进程会在启动瞬间被杀（日志空白、端口无监听）；本工具改用
+> `DETACHED_PROCESS` 让服务真正脱离父进程，调用结束后依然存活。
+> 日志写在 `output/web-server.log`。
+
 **桌面版（含悬浮窗，推荐日常用）**
 ```bash
 cd desktop
@@ -319,6 +330,8 @@ MIT
 - **修复卡片内两个区块同时显示**：`.ai-setup-form` / `.ai-setup-done` 自身的 `display` 会盖掉 HTML 的 `hidden` 属性，补 `[hidden] { display:none !important }` 强制规则。
 - **首页输入框用明文**（`type="text"` 而非 `password`）：占位符 `sk-xxxxxxxx` 能直接看见，不再是看不清的小圆点。
 - 新增 `tools/verify-inline-key.mjs`：headless 浏览器验证「打开首页即可填 key」全流程（含**按渲染盒尺寸**判断真实可见，能抓出被 CSS 盖掉的隐藏元素）。
+- 新增 `tools/serve-detached.py`：把网页版服务以 `DETACHED_PROCESS` 方式**后台常驻**启动（`--status` / `--stop` 一并给了）。
+  原因：受限环境里用 bash 的 `&` / `nohup` 启动时进程会瞬间被杀（日志空白、端口无监听），必须真正脱离父进程才行。
 - 版本 1.3.0 → 1.3.1。
 
 ### v1.3.0（2026-09-30）
