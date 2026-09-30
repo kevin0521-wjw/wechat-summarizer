@@ -39,6 +39,8 @@ function tag(html) {
 function renderStats(s) {
   if (!s) return;
   document.getElementById('stat-total').textContent = s.total ?? 0;
+  const roomsEl = document.getElementById('stat-rooms');
+  if (roomsEl) roomsEl.textContent = s.rooms ?? s.room_count ?? '—';
   const words = s.words || [];
   const wx = s.wx_emoji || [];
   const emo = s.emoji || [];
@@ -239,18 +241,58 @@ async function loadConfigState() {
   const c = await getJSON('/api/config');
   if (!c) return;
 
-  const set = c.api_key_set;
+  const real = !!c.api_key_set;            // 真的填了可用的 key
+  const placeholder = !!c.api_key_placeholder;  // 还是 config.yaml 里的 sk-xxxx 占位符
   const ks = $('key-state');
-  if (set) {
+
+  // —— API key 输入框下的状态行 ——
+  if (real) {
     ks.textContent = `已配置（${c.api_key_masked}）· 留空则不修改`;
     ks.className = 'field-hint set';
+  } else if (placeholder) {
+    ks.textContent = '⚠️ 当前是占位符 sk-xxxxxxxx，不是真实 key —— 请替换后保存';
+    ks.className = 'field-hint bad';
   } else {
     ks.textContent = '未配置 · 填好后点保存';
     ks.className = 'field-hint';
   }
 
-  // 顶部横幅 + 状态栏提示
-  $('apikey-banner').hidden = !!set;
+  // —— 顶部引导横幅 ——
+  const banner = $('apikey-banner');
+  if (real) {
+    banner.hidden = true;
+  } else {
+    banner.hidden = false;
+    banner.classList.toggle('warn-placeholder', placeholder);
+    if (placeholder) {
+      $('banner-title').textContent = '当前 API key 是占位符，AI 调用会失败';
+      $('banner-sub').textContent = 'config.yaml 里还是 sk-xxxxxxxx，点右侧按钮换成你的真实 key。';
+      $('banner-open').textContent = '换成真实 key';
+    } else {
+      $('banner-title').textContent = '还没配置 AI API key';
+      $('banner-sub').textContent = '填上 DeepSeek key 后，「选中即分析 / 汇总 / 视频解析」才能出结果。';
+      $('banner-open').textContent = '现在去填';
+    }
+  }
+
+  // —— 首页 AI 状态卡 ——
+  const box = $('ai-status');
+  const title = $('ai-status-title');
+  const sub = $('ai-status-sub');
+  box.classList.remove('ok', 'warn', 'bad');
+  if (real) {
+    box.classList.add('ok');
+    title.textContent = 'AI 已就绪';
+    sub.textContent = `${c.model || 'deepseek-chat'} · key ${c.api_key_masked}`;
+  } else if (placeholder) {
+    box.classList.add('bad');
+    title.textContent = 'AI 未就绪 · key 是占位符';
+    sub.textContent = '把 config.yaml 里的 sk-xxxxxxxx 换成真实 key 才能用';
+  } else {
+    box.classList.add('warn');
+    title.textContent = 'AI 未配置';
+    sub.textContent = '点右侧填入 DeepSeek API key，1 分钟搞定';
+  }
 
   // 只填充非敏感字段；敏感字段留空（避免覆盖）
   $('cfg-base-url').value = c.base_url || '';
@@ -346,6 +388,7 @@ async function testAI() {
 
 $('btn-settings').addEventListener('click', openSettings);
 $('banner-open').addEventListener('click', openSettings);
+$('ai-status-open').addEventListener('click', openSettings);
 $('settings-close').addEventListener('click', closeSettings);
 $('settings-cancel').addEventListener('click', closeSettings);
 $('settings-save').addEventListener('click', saveSettings);

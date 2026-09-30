@@ -28,20 +28,34 @@
   </header>
 
   <div class="apikey-banner" id="apikey-banner" hidden>
-    <span>还没配置 DeepSeek API key，AI 分析功能不可用。</span>
-    <button class="btn btn-sm" id="banner-open">现在去填</button>
+    <div class="banner-inner">
+      <span class="banner-icon"></span>
+      <div class="banner-text">
+        <b id="banner-title">还没配置 AI API key</b>
+        <span id="banner-sub">填上 DeepSeek key 后，「选中即分析 / 汇总 / 视频解析」才能出结果。</span>
+      </div>
+      <button class="btn btn-sm" id="banner-open">现在去填</button>
+    </div>
   </div>
 
   <main>
+    <!-- AI 状态卡：一眼看清 key 配没配 -->
+    <section class="card ai-status" id="ai-status">
+      <div class="ai-status-left">
+        <span class="ai-dot" id="ai-dot"></span>
+        <div>
+          <div class="ai-status-title" id="ai-status-title">检查 AI 配置中…</div>
+          <div class="ai-status-sub" id="ai-status-sub"></div>
+        </div>
+      </div>
+      <button class="btn btn-ghost btn-sm" id="ai-status-open">配置 AI</button>
+    </section>
+
     <!-- 统计卡片 -->
     <section class="grid stats">
       <div class="card">
         <div class="card-title">消息总数</div>
         <div class="big-num" id="stat-total">—</div>
-      </div>
-      <div class="card span2">
-        <div class="card-title">热词 Top</div>
-        <div class="tags" id="stat-words">暂无数据</div>
       </div>
       <div class="card">
         <div class="card-title">微信表情 Top</div>
@@ -50,6 +64,14 @@
       <div class="card">
         <div class="card-title">Emoji Top</div>
         <div class="tags" id="stat-emoji">暂无数据</div>
+      </div>
+      <div class="card">
+        <div class="card-title">覆盖群/联系人</div>
+        <div class="big-num" id="stat-rooms">—</div>
+      </div>
+      <div class="card span2-full">
+        <div class="card-title">热词 Top</div>
+        <div class="tags" id="stat-words">暂无数据</div>
       </div>
     </section>
 
@@ -63,14 +85,14 @@
     <!-- 选中即分析：粘贴/输入内容 → DeepSeek → 结果 -->
     <section class="card analyze">
       <div class="card-title">
-        选中即分析
+        粘贴内容 → AI 分析
         <span class="hint" id="hotkey-hint">桌面版：选中内容后按 Ctrl+Alt+D，结果浮在屏幕上</span>
       </div>
       <textarea id="sel-input" rows="4"
-        placeholder="把聊天记录 / 长段文字 / 视频链接粘到这里，或直接点「分析选中内容」自动读取剪贴板…"></textarea>
+        placeholder="把聊天记录 / 长段文字 / 视频链接粘到这里，或直接点「读剪贴板并分析」…"></textarea>
       <div class="actions">
         <button class="btn" id="btn-analyze">分析这段内容</button>
-        <button class="btn btn-ghost" id="btn-analyze-clip">分析剪贴板</button>
+        <button class="btn btn-ghost" id="btn-analyze-clip">读剪贴板并分析</button>
         <select id="sel-kind" class="sel">
           <option value="">自动判断类型</option>
           <option value="chat">当作聊天记录</option>
@@ -106,11 +128,17 @@
       </div>
 
       <div class="modal-body">
+        <!-- ① AI 接口：置顶 + 展开 -->
         <div class="field-group">
-          <div class="group-title">AI 接口（DeepSeek / 任意 OpenAI 兼容）</div>
+          <div class="group-title">
+            <span class="gt-num">1</span>AI 接口（DeepSeek / 任意 OpenAI 兼容）
+            <span class="gt-badge req-badge">必填</span>
+          </div>
 
           <label class="field">
-            <span class="label">API Key <b class="req">必填</b></span>
+            <span class="label">API Key <b class="req">必填</b>
+              <a class="help-link" href="https://platform.deepseek.com/api_keys" target="_blank" rel="noopener">如何获取？</a>
+            </span>
             <div class="input-row">
               <input type="password" id="cfg-api-key" autocomplete="off" spellcheck="false"
                      placeholder="sk-xxxxxxxxxxxxxxxx">
@@ -139,18 +167,26 @@
           </div>
         </div>
 
-        <div class="field-group">
-          <div class="group-title">表情包识别（可选）</div>
+        <!-- ② 表情包识别：折叠（进阶） -->
+        <details class="field-group fold">
+          <summary class="group-title">
+            <span class="gt-num">2</span>表情包识别（可选）
+            <span class="fold-caret"></span>
+          </summary>
           <label class="field">
             <span class="label">视觉模型</span>
             <input type="text" id="cfg-vision-model" autocomplete="off" spellcheck="false"
                    placeholder="qwen-vl-max / gpt-4o-mini / glm-4v">
             <span class="field-hint">DeepSeek 暂无视觉模型，留空则表情包走文字判断。</span>
           </label>
-        </div>
+        </details>
 
-        <div class="field-group">
-          <div class="group-title">群分组</div>
+        <!-- ③ 群分组：折叠 -->
+        <details class="field-group fold">
+          <summary class="group-title">
+            <span class="gt-num">3</span>群分组（决定汇总频率）
+            <span class="fold-caret"></span>
+          </summary>
           <label class="field">
             <span class="label">免打扰 / 折叠群</span>
             <input type="text" id="cfg-muted-rooms" autocomplete="off"
@@ -163,10 +199,14 @@
                    placeholder="群名D, 群名E">
             <span class="field-hint">逗号分隔。留空则自动取当天消息量 Top 5。</span>
           </label>
-        </div>
+        </details>
 
-        <div class="field-group">
-          <div class="group-title">推送通道（可选，可多开）</div>
+        <!-- ④ 推送通道：折叠 -->
+        <details class="field-group fold">
+          <summary class="group-title">
+            <span class="gt-num">4</span>推送通道（可选，可多开）
+            <span class="fold-caret"></span>
+          </summary>
           <label class="field">
             <span class="label">Server 酱 SendKey</span>
             <input type="password" id="cfg-serverchan" autocomplete="off" spellcheck="false"
@@ -183,7 +223,7 @@
                    placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=...">
           </label>
           <span class="field-hint">留空 = 不修改已填的值。桌面 Toast 与落盘 txt 默认开启。</span>
-        </div>
+        </details>
       </div>
 
       <div class="modal-foot">

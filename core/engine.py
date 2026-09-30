@@ -214,8 +214,12 @@ class Engine:
     def get_stats(self) -> dict:
         from core import stats as st
         msgs = self.store.all()
+        # 覆盖的会话数（群 + 私聊），用于首页统计卡
+        rooms = len({m.get("roomid") or m.get("room_id") or m.get("sender") or ""
+                     for m in msgs} - {""})
         return {
             "total": len(msgs),
+            "rooms": rooms,
             "words": st.top_words(msgs, 10),
             "wx_emoji": st.top_wx_emoji(msgs, 8),
             "emoji": st.top_unicode_emoji(msgs, 8),

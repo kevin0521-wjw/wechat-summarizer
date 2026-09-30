@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """配置加载：读 config.yaml 到内存，带默认值"""
 import os
+import re
 import sys
 import yaml
 
@@ -150,12 +151,143 @@ def update(patch: dict, path: str = CONFIG_PATH) -> dict:
         _set_path(raw, key, val)
         written.append(key)
 
-    # 原子写：先写临时文件再替换，避免写一半崩了把配置弄坏
-    tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        yaml.safe_dump(raw, f, allow_unicode=True, sort_keys=False, default_flow_style=False)
-    os.replace(tmp, path)
+    # 原子写 + **保留注释**：
+    # 早年直接用 yaml.safe_dump 重写，会把 config.yaml 里的所有中文注释和排版全部抹掉
+    # （用户精心写的说明一夜清零，属于不可逆的数据损失）。
+    # 改成「原地改行」：只替换目标 key 那一行，其余行原样保留。
+    _write_preserving_comments(path, written, raw)
     return {"written": written}
+
+
+def _dump_scalar(val, old_line: str = "") -> str:
+    """
+    把 Python 值转成可直接写进 yaml 单行的字面量。
+
+    old_line 传入旧行时，会尽量沿用旧行的引号风格（原本带引号的字符串继续带引号），
+    避免「只改了值、却把 `"deepseek-chat"` 变成 `deepseek-chat`」这种无意义的 diff。
+    """
+    if isinstance(val, bool):
+        return "true" if val else "false"
+    if isinstance(val, (int, float)):
+        return str(val)
+    if isinstance(val, list):
+        return "[" + ", ".join(_dump_scalar(v) for v in val) + "]"
+    s = str(val)
+    # 含特殊字符时必须加引号
+    need_quote = s == "" or any(c in s for c in ":#{}[],&*?|>'\"%@`")
+    # 旧值本来就带引号 → 保持带引号，减少无谓 diff
+    if not need_quote and old_line:
+        old_val = old_line.split(":", 1)[-1]
+        old_val = old_val.split("#", 1)[0].strip()
+        if len(old_val) >= 2 and old_val[0] == old_val[-1] and old_val[0] in "\"'":
+            need_quote = True
+    if need_quote:
+        return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
+    return s
+
+
+def _keep_trailing_comment(old_line: str) -> str:
+    """
+    从旧行里取出行尾注释（如 `api_key: "sk-x"   # 换成你的 key` 里的 `# 换成你的 key`）。
+    重写值那一行时把它接回去，避免用户写的行内说明丢失。
+    找不到就返回空串。
+    """
+    # 只在引号外的 '#' 才算注释起始，简单处理：取最后一个 ' #'
+    idx = old_line.find("#")
+    if idx < 0:
+        return ""
+    core = old_line[:idx]
+    # 引号成对才认为是「真的注释」，否则 # 在字符串里
+    if core.count('"') % 2 or core.count("'") % 2:
+        return ""
+    return old_line[idx:].rstrip()
+
+
+def _write_preserving_comments(path: str, keys: list, raw: dict) -> None:
+    """
+    只改 keys 里那几个键的行，其它内容（注释、空行、注释块）一字不动。
+
+    做法：把文件按行读入，用「顶层键 / 二级键」的缩进状态机定位目标行并替换。
+    找不到的目标键则追加到对应段落末尾（或文件末尾新建）。
+    """
+    lines = []
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as f:
+            lines = f.read().split("\n")
+
+    # 目标键 → (父键, 子键)，parent 为空表示顶层
+    targets = {}
+    for k in keys:
+        if "." in k:
+            parent, child = k.split(".", 1)
+            targets.setdefault(parent, {})[child] = True
+        else:
+            targets[k] = None
+
+    done = set()
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        stripped = line.strip()
+        # 顶层键（无缩进、非注释）
+        m_top = re.match(r"^([A-Za-z_][\w\-]*)\s*:(.*)$", line)
+        if m_top and m_top.group(1) in targets:
+            parent = m_top.group(1)
+            sub = targets[parent]
+            if sub is None:                       # 顶层标量
+                val = raw.get(parent)
+                if val is not None and not isinstance(val, dict):
+                    cmt = _keep_trailing_comment(line)
+                    lines[i] = f"{parent}: {_dump_scalar(val, line)}" + (f"  {cmt}" if cmt else "")
+                    done.add(parent)
+                i += 1
+                continue
+            # 进入该段落，往下找二级键
+            j = i + 1
+            while j < len(lines):
+                nxt = lines[j]
+                if nxt.strip() and not nxt.startswith((" ", "\t", "#")):
+                    break                          # 回到顶层，段落结束
+                m_sub = re.match(r"^(\s+)([A-Za-z_][\w\-]*)\s*:(.*)$", nxt)
+                if m_sub and m_sub.group(2) in sub:
+                    child = m_sub.group(2)
+                    val = (raw.get(parent) or {}).get(child)
+                    if val is not None:
+                        cmt = _keep_trailing_comment(nxt)
+                        lines[j] = (f"{m_sub.group(1)}{child}: {_dump_scalar(val, nxt)}"
+                                    + (f"  {cmt}" if cmt else ""))
+                        done.add(f"{parent}.{child}")
+                j += 1
+            # 有没找到的子键 → 追加到段落末尾
+            for child in sub:
+                full = f"{parent}.{child}"
+                if full not in done:
+                    val = (raw.get(parent) or {}).get(child)
+                    if val is not None:
+                        lines.insert(j, f"  {child}: {_dump_scalar(val)}")
+                        j += 1
+            i = j
+            continue
+        i += 1
+
+    # 完全没出现在文件里的顶层键 → 追加到文件末尾
+    for k in keys:
+        top = k.split(".", 1)[0]
+        if top in done or (top in targets and targets[top] is None and top in done):
+            continue
+        if top not in done and top in targets and targets[top] is None:
+            val = raw.get(top)
+            if val is not None and not isinstance(val, dict):
+                if lines and lines[-1].strip():
+                    lines.append("")
+                lines.append(f"{top}: {_dump_scalar(val)}")
+                done.add(top)
+
+    text = "\n".join(lines)
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8", newline="\n") as f:
+        f.write(text)
+    os.replace(tmp, path)
 
 
 def mask_key(key: str) -> str:
@@ -166,3 +298,28 @@ def mask_key(key: str) -> str:
     if len(k) <= 8:
         return "*" * len(k)
     return f"{k[:5]}{'*' * 6}{k[-4:]}"
+
+
+def is_real_key(key: str) -> bool:
+    """
+    判断 api_key 是不是「真的填了」。
+
+    为什么不能只用 bool()：config.yaml 里默认写着 `sk-xxxxxxxx` 这种占位符，
+    bool() 会返回 True → 首页误判成「已配置」→ 用户永远看不到「去填 key」的引导，
+    只在真正调用 AI 时才失败，非常难排查。
+
+    规则：
+      - 空 / None          → 不是
+      - 含占位符特征（xxxxxxxx / your / 你的 / 换成 / 填）→ 不是
+      - 明显是真实 key     → 是（sk- 开头且长度足够，或 >= 20 位的高熵串）
+    """
+    if not key:
+        return False
+    k = str(key).strip()
+    if len(k) < 12:
+        return False                          # 太短，肯定不是有效 key
+    low = k.lower()
+    placeholders = ("xxxxxxxx", "your", "你的", "换成", "填", "example", "todo", "changeme")
+    if any(p in low for p in placeholders):
+        return False
+    return True

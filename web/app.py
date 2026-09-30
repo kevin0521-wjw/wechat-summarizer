@@ -37,7 +37,7 @@ if hasattr(sys, "_MEIPASS"):
 else:
     STATIC_DIR = os.path.join(BASE_DIR, "web", "static")
 
-app = FastAPI(title="微信消息 AI 助手", version="1.2.1")
+app = FastAPI(title="微信消息 AI 助手", version="1.3.0")
 engine: Engine = None
 
 
@@ -123,12 +123,18 @@ def config():
     """配置概览（**不回传完整 key**，只回显掩码后的形式）"""
     cfg = engine.cfg if engine is not None else load()
     ai = cfg["ai"]
+    raw_key = ai.get("api_key", "")
+    real = cfgmod.is_real_key(raw_key)
     return {
         "message_source": cfg["message_source"]["type"],
         "model": ai["model"],
         "base_url": ai.get("base_url", ""),
-        "api_key_set": bool(ai.get("api_key")),
-        "api_key_masked": cfgmod.mask_key(ai.get("api_key", "")),
+        # 注意：用 is_real_key 而非 bool()——config.yaml 默认的 sk-xxxxxxxx 占位符
+        # 会被 bool() 误判成"已配置"，导致首页永不显示引导横幅。
+        "api_key_set": real,
+        "api_key_present": bool(raw_key),
+        "api_key_placeholder": bool(raw_key) and not real,
+        "api_key_masked": cfgmod.mask_key(raw_key) if real else "",
         "vision_model": ai.get("vision_model", ""),
         "schedule": cfg["schedule"],
         "video_enabled": cfg["video"]["enabled"],
