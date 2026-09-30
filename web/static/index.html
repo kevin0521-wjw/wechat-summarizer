@@ -32,23 +32,49 @@
       <span class="banner-icon"></span>
       <div class="banner-text">
         <b id="banner-title">还没配置 AI API key</b>
-        <span id="banner-sub">填上 DeepSeek key 后，「选中即分析 / 汇总 / 视频解析」才能出结果。</span>
+        <span id="banner-sub">在下面输入框粘贴 DeepSeek key 即可，「选中即分析 / 汇总 / 视频解析」都需要它。</span>
       </div>
-      <button class="btn btn-sm" id="banner-open">现在去填</button>
+      <button class="btn btn-sm" id="banner-open">去填 key</button>
     </div>
   </div>
 
   <main>
-    <!-- AI 状态卡：一眼看清 key 配没配 -->
-    <section class="card ai-status" id="ai-status">
-      <div class="ai-status-left">
+    <!-- ★ AI 配置卡：首页直接填 API Key，不用找设置 -->
+    <section class="card ai-setup" id="ai-setup">
+      <div class="ai-setup-head">
         <span class="ai-dot" id="ai-dot"></span>
-        <div>
-          <div class="ai-status-title" id="ai-status-title">检查 AI 配置中…</div>
-          <div class="ai-status-sub" id="ai-status-sub"></div>
+        <div class="ai-setup-titles">
+          <div class="ai-setup-title" id="ai-status-title">检查 AI 配置中…</div>
+          <div class="ai-setup-sub" id="ai-status-sub"></div>
+        </div>
+        <span class="ai-setup-badge" id="ai-badge">检测中</span>
+      </div>
+
+      <!-- 未配置/占位符时展开：直接在这里填 key -->
+      <div class="ai-setup-form" id="ai-setup-form">
+        <label class="ai-setup-label" for="inl-api-key">
+          API Key<span class="req-star">*</span>
+          <a class="help-link" href="https://platform.deepseek.com/api_keys" target="_blank" rel="noopener">如何获取？</a>
+        </label>
+        <div class="ai-setup-row">
+          <input class="input" id="inl-api-key" type="text" autocomplete="off" spellcheck="false"
+                 placeholder="sk-你的DeepSeek密钥（粘贴到这里）">
+          <button class="btn btn-sm" id="inl-save">保存 key</button>
+        </div>
+        <div class="ai-setup-note" id="inl-note">
+          粘贴 <b>sk-</b> 开头的 DeepSeek 密钥，点「保存 key」立即生效，不用重启。
+        </div>
+        <div class="ai-setup-extra">
+          <button class="btn btn-ghost btn-sm" id="ai-status-open">更多设置（模型 / 推送 / 分组）</button>
+          <button class="btn btn-ghost btn-sm" id="inl-test">测试连接</button>
         </div>
       </div>
-      <button class="btn btn-ghost btn-sm" id="ai-status-open">配置 AI</button>
+
+      <!-- 已配置时收起，只显示状态 + 换 key 入口 -->
+      <div class="ai-setup-done" id="ai-setup-done" hidden>
+        <span class="ai-masked" id="ai-masked"></span>
+        <button class="btn btn-ghost btn-sm" id="ai-status-open2">更多设置</button>
+      </div>
     </section>
 
     <!-- 统计卡片 -->

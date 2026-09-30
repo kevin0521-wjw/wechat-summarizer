@@ -257,7 +257,7 @@ async function loadConfigState() {
     ks.className = 'field-hint';
   }
 
-  // —— 顶部引导横幅 ——
+  // —— 顶部引导横幅（文案指向「下面输入框」，不是「去设置」）——
   const banner = $('apikey-banner');
   if (real) {
     banner.hidden = true;
@@ -266,32 +266,50 @@ async function loadConfigState() {
     banner.classList.toggle('warn-placeholder', placeholder);
     if (placeholder) {
       $('banner-title').textContent = '当前 API key 是占位符，AI 调用会失败';
-      $('banner-sub').textContent = 'config.yaml 里还是 sk-xxxxxxxx，点右侧按钮换成你的真实 key。';
-      $('banner-open').textContent = '换成真实 key';
+      $('banner-sub').textContent = '把下面的 sk-xxxxxxxx 换成你的真实 DeepSeek key 即可。';
+      $('banner-open').textContent = '去填 key';
     } else {
       $('banner-title').textContent = '还没配置 AI API key';
-      $('banner-sub').textContent = '填上 DeepSeek key 后，「选中即分析 / 汇总 / 视频解析」才能出结果。';
-      $('banner-open').textContent = '现在去填';
+      $('banner-sub').textContent = '在下面输入框粘贴 DeepSeek key 即可，「选中即分析 / 汇总 / 视频解析」都需要它。';
+      $('banner-open').textContent = '去填 key';
     }
   }
 
-  // —— 首页 AI 状态卡 ——
-  const box = $('ai-status');
+  // —— 首页 AI 配置卡：未配好就展开表单，配好了就收起 ——
+  const box = $('ai-setup');
   const title = $('ai-status-title');
   const sub = $('ai-status-sub');
+  const badge = $('ai-badge');
+  const form = $('ai-setup-form');
+  const done = $('ai-setup-done');
+
   box.classList.remove('ok', 'warn', 'bad');
   if (real) {
     box.classList.add('ok');
     title.textContent = 'AI 已就绪';
-    sub.textContent = `${c.model || 'deepseek-chat'} · key ${c.api_key_masked}`;
+    sub.textContent = `${c.model || 'deepseek-chat'} · 可以去用「选中即分析 / 每日汇总」了`;
+    badge.textContent = '已配置';
+    form.hidden = true;
+    done.hidden = false;
+    $('ai-masked').textContent = c.api_key_masked || '';
   } else if (placeholder) {
     box.classList.add('bad');
-    title.textContent = 'AI 未就绪 · key 是占位符';
-    sub.textContent = '把 config.yaml 里的 sk-xxxxxxxx 换成真实 key 才能用';
+    title.textContent = 'AI 未就绪 · key 还是占位符';
+    sub.textContent = '把下面的 sk-xxxxxxxx 换成真实 key，保存后立刻可用';
+    badge.textContent = '待填写';
+    form.hidden = false;
+    done.hidden = true;
+    $('inl-note').innerHTML =
+      '⚠️ 配置里现在是占位符 <b>sk-xxxxxxxx</b>，它<b>不是</b>真实 key —— 请粘贴你的 DeepSeek 密钥替换。';
   } else {
     box.classList.add('warn');
-    title.textContent = 'AI 未配置';
-    sub.textContent = '点右侧填入 DeepSeek API key，1 分钟搞定';
+    title.textContent = 'AI 未配置 · 在这里填 key';
+    sub.textContent = '粘贴 DeepSeek API key 后点保存，立即生效';
+    badge.textContent = '待填写';
+    form.hidden = false;
+    done.hidden = true;
+    $('inl-note').innerHTML =
+      '粘贴 <b>sk-</b> 开头的 DeepSeek 密钥，点「保存 key」立即生效，不用重启。';
   }
 
   // 只填充非敏感字段；敏感字段留空（避免覆盖）
@@ -387,8 +405,77 @@ async function testAI() {
 }
 
 $('btn-settings').addEventListener('click', openSettings);
-$('banner-open').addEventListener('click', openSettings);
 $('ai-status-open').addEventListener('click', openSettings);
+$('ai-status-open2') && $('ai-status-open2').addEventListener('click', openSettings);
+
+// 横幅「去填 key」→ 滚到首页输入框并聚焦（不再跳设置弹窗，少一步）
+$('banner-open').addEventListener('click', () => {
+  const form = $('ai-setup-form');
+  if (form) form.hidden = false;
+  $('ai-setup').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  setTimeout(() => { const i = $('inl-api-key'); if (i) { i.focus(); i.select(); } }, 350);
+});
+
+// ★ 首页内嵌保存：只提交 api_key，一个字都不用去设置里找
+async function saveInlineKey() {
+  const inp = $('inl-api-key');
+  const note = $('inl-note');
+  const val = (inp.value || '').trim();
+  if (!val) {
+    note.textContent = '请先粘贴 DeepSeek API key 再保存（应以 sk- 开头）。';
+    note.className = 'ai-setup-note bad-note';
+    inp.focus();
+    return;
+  }
+  const btn = $('inl-save');
+  btn.disabled = true;
+  btn.textContent = '保存中…';
+  // 注意：后端只认「点号扁平键」（如 'ai.api_key'），传嵌套对象会被静默忽略
+  const r = await getJSON('/api/config', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ 'ai.api_key': val }),
+  });
+  btn.disabled = false;
+  btn.textContent = '保存 key';
+  if (r && r.ok) {
+    inp.value = '';
+    note.textContent = `已保存 ✓  key 已生效，可以直接用了。`;
+    note.className = 'ai-setup-note ok-note';
+    await loadConfigState();
+    setTimeout(refreshStats, 200);
+  } else {
+    note.textContent = (r && r.error) ? r.error : '保存失败，请检查 key 是否正确。';
+    note.className = 'ai-setup-note bad-note';
+  }
+}
+$('inl-save').addEventListener('click', saveInlineKey);
+$('inl-api-key').addEventListener('keydown', e => {
+  if (e.key === 'Enter') { e.preventDefault(); saveInlineKey(); }
+});
+
+// 首页内嵌「测试连接」：用当前输入框的值（没填就用已存的）试一次
+$('inl-test').addEventListener('click', async () => {
+  const note = $('inl-note');
+  const typed = ($('inl-api-key').value || '').trim();
+  note.textContent = '正在测试连接…';
+  note.className = 'ai-setup-note';
+  const body = { model: $('cfg-model') ? $('cfg-model').value.trim() : '' };
+  if (typed) body.api_key = typed;
+  const r = await getJSON('/api/test_ai', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (r && r.ok) {
+    note.textContent = `连接正常 ✓  ${r.model} 回复「${r.reply}」`;
+    note.className = 'ai-setup-note ok-note';
+  } else {
+    note.textContent = (r && r.error) ? r.error : '测试失败';
+    note.className = 'ai-setup-note bad-note';
+  }
+});
+
 $('settings-close').addEventListener('click', closeSettings);
 $('settings-cancel').addEventListener('click', closeSettings);
 $('settings-save').addEventListener('click', saveSettings);

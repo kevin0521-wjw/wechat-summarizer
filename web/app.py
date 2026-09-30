@@ -37,7 +37,7 @@ if hasattr(sys, "_MEIPASS"):
 else:
     STATIC_DIR = os.path.join(BASE_DIR, "web", "static")
 
-app = FastAPI(title="微信消息 AI 助手", version="1.3.0")
+app = FastAPI(title="微信消息 AI 助手", version="1.3.1")
 engine: Engine = None
 
 
@@ -164,6 +164,14 @@ def save_config(payload: dict = None):
         res = cfgmod.update(payload)
     except Exception as e:
         return JSONResponse({"ok": False, "error": f"写入失败：{e}"}, status_code=500)
+
+    # ⚠️ written 为空不能算成功：说明提交的键都不在白名单里（或全是空值）。
+    # 早先直接返回 ok:true，前端会显示「已保存」但配置其实没变，极难排查。
+    if not res.get("written"):
+        return JSONResponse(
+            {"ok": False, "written": [], "error": "没有可保存的改动：键名不在允许范围内，或值留空被跳过了。"},
+            status_code=400,
+        )
 
     # 让内存里的 engine 立刻用上新配置（不用重启）
     try:

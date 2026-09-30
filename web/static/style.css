@@ -69,23 +69,73 @@ h1 { font-size: 18px; font-weight: 600; }
 .apikey-banner.warn-placeholder .btn { background: #c0453a; }
 .apikey-banner.warn-placeholder .btn:hover { background: #a83a30; }
 
-/* AI 状态卡（首页常驻） */
+/* AI 配置卡（首页常驻，可直接填 key） */
+.ai-setup {
+  margin-bottom: 16px; padding: 16px 18px;
+  border-width: 1.5px;
+}
+.ai-setup-head { display: flex; align-items: center; gap: 12px; }
+.ai-setup-titles { flex: 1; min-width: 0; }
+.ai-setup-title { font-size: 14px; font-weight: 600; }
+.ai-setup-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.ai-setup-badge {
+  flex-shrink: 0; font-size: 11px; padding: 2px 9px; border-radius: 999px;
+  background: #eef0ef; color: #666; font-weight: 600;
+}
+.ai-dot {
+  width: 10px; height: 10px; border-radius: 50%; background: #d0d3d2; flex-shrink: 0;
+}
+.ai-setup.ok .ai-dot { background: var(--green); box-shadow: 0 0 0 3px rgba(7,193,96,.18); }
+.ai-setup.warn .ai-dot { background: #e0a800; box-shadow: 0 0 0 3px rgba(224,168,0,.22); }
+.ai-setup.bad .ai-dot { background: #d0574a; box-shadow: 0 0 0 3px rgba(208,87,74,.2); }
+.ai-setup.ok { border-color: rgba(7,193,96,.4); background: #f7fdf9; }
+.ai-setup.warn { border-color: #f2e2b8; background: #fffdf6; }
+.ai-setup.bad { border-color: #f5c9c4; background: #fffafa; }
+.ai-setup.ok .ai-setup-badge { background: rgba(7,193,96,.12); color: #04713a; }
+.ai-setup.warn .ai-setup-badge { background: rgba(224,168,0,.16); color: #8a6500; }
+.ai-setup.bad .ai-setup-badge { background: #fdeceb; color: #b3261e; }
+
+/* 内嵌表单 —— 注意 [hidden] 必须强制 display:none，
+   否则 .ai-setup-form/.ai-setup-done 自身的 display 会盖掉 hidden 属性，两个块同时显示 */
+.ai-setup-form[hidden],
+.ai-setup-done[hidden] { display: none !important; }
+.ai-setup-form { margin-top: 14px; padding-top: 14px; border-top: 1px dashed rgba(0,0,0,.09); }
+.ai-setup-label {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 13px; font-weight: 600; margin-bottom: 7px;
+}
+.ai-setup-label .help-link { margin-left: auto; }
+.req-star { color: #d0574a; font-weight: 700; }
+.ai-setup-row { display: flex; gap: 8px; }
+.ai-setup-row .input { flex: 1; min-width: 0; }
+.ai-setup-row .btn { flex-shrink: 0; white-space: nowrap; }
+.ai-setup-note {
+  font-size: 12px; color: var(--muted); margin-top: 8px; line-height: 1.6;
+}
+.ai-setup-note b { color: var(--green); }
+.ai-setup-note.ok-note { color: #04713a; font-weight: 600; }
+.ai-setup-note.bad-note { color: #b3261e; font-weight: 600; }
+.ai-setup-extra { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+
+/* 已配置态 */
+.ai-setup-done {
+  display: flex; align-items: center; gap: 10px;
+  margin-top: 12px; padding-top: 12px; border-top: 1px dashed rgba(0,0,0,.09);
+}
+.ai-masked {
+  font-family: ui-monospace, Consolas, monospace; font-size: 12px;
+  background: rgba(0,0,0,.05); padding: 4px 10px; border-radius: 6px; color: #444;
+}
+.ai-setup-done .btn { margin-left: auto; }
+
+/* 旧类名保留（兼容） */
 .ai-status {
   display: flex; align-items: center; justify-content: space-between; gap: 14px;
   margin-bottom: 16px; padding: 14px 18px;
 }
 .ai-status-left { display: flex; align-items: center; gap: 12px; }
-.ai-dot {
-  width: 10px; height: 10px; border-radius: 50%; background: #d0d3d2; flex-shrink: 0;
-}
-.ai-status.ok .ai-dot { background: var(--green); box-shadow: 0 0 0 3px rgba(7,193,96,.18); }
-.ai-status.warn .ai-dot { background: #e0a800; box-shadow: 0 0 0 3px rgba(224,168,0,.22); }
-.ai-status.bad .ai-dot { background: #d0574a; box-shadow: 0 0 0 3px rgba(208,87,74,.2); }
 .ai-status-title { font-size: 14px; font-weight: 600; }
 .ai-status-sub { font-size: 12px; color: var(--muted); margin-top: 1px; }
-.ai-status.ok { border-color: rgba(7,193,96,.4); background: #f7fdf9; }
-.ai-status.warn { border-color: #f2e2b8; background: #fffdf6; }
-.ai-status.bad { border-color: #f5c9c4; background: #fffafa; }
 
 main { max-width: 1080px; margin: 0 auto; padding: 20px; }
 

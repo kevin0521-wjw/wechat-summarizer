@@ -113,11 +113,30 @@ def _get_path(d: dict, path: str, default=None):
     return cur
 
 
+def _flatten(patch: dict, prefix: str = "") -> dict:
+    """
+    把嵌套字典拍平成「点号键」，兼容两种前端写法：
+      {"ai": {"api_key": "sk-x"}}        →  {"ai.api_key": "sk-x"}
+      {"ai.api_key": "sk-x"}             →  {"ai.api_key": "sk-x"}
+    ⚠️ 不加这层兼容时，传嵌套结构会因 key 不在白名单而被**静默忽略**，
+    表现为接口返回 ok:true 但 written:[]、配置其实没改（很难查）。
+    """
+    out = {}
+    for k, v in (patch or {}).items():
+        full = f"{prefix}{k}" if not prefix else f"{prefix}.{k}"
+        if isinstance(v, dict):
+            out.update(_flatten(v, full))
+        else:
+            out[full] = v
+    return out
+
+
 def update(patch: dict, path: str = CONFIG_PATH) -> dict:
     """
     把网页界面提交的部分配置合并进 config.yaml 并落盘。
 
     - 只接受 _WRITABLE 白名单里的键（其余忽略）
+    - 支持「点号扁平键」和「嵌套字典」两种写法（内部统一拍平）
     - 值为 None / 空字符串且原值非空 时：视为「不改动」（避免误清空已有 key）
     - 返回实际写入的键列表
     """
@@ -130,7 +149,7 @@ def update(patch: dict, path: str = CONFIG_PATH) -> dict:
         raw = {}
 
     written = []
-    for key, val in (patch or {}).items():
+    for key, val in _flatten(patch).items():
         if key not in _WRITABLE:
             continue
         if val is None:
