@@ -22,6 +22,15 @@ import argparse
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+# 打包成 exe（PyInstaller --console）后，stdout/stderr 常是 cp1252 或 None，
+# 任何中文 print 都会抛 UnicodeEncodeError 导致进程启动即崩。模块级先兜住。
+for _s in (sys.stdout, sys.stderr):
+    try:
+        if _s is not None:
+            _s.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 from fastapi import FastAPI, Query
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles

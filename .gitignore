@@ -21,6 +21,10 @@ vendor/**/__pycache__/
 # 依赖 / 打包
 node_modules/
 desktop/release/
+desktop/dist-release/
+# 构建工作区：electron-builder 的输出（安装包约 300 MB）+ winCodeSign 补丁中间物
+# 由 scripts/build_installer_local_mirror.py 生成，可随时重建，不进仓库
+wms-build/
 
 # 敏感配置（含 key，勿提交）
 config.local.yaml

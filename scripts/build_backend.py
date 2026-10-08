@@ -67,6 +67,70 @@ def copy_vendor():
     print(f"  已复制 {total / 1024 / 1024:.1f} MB")
 
 
+def verify_exe(port: int = 8099) -> bool:
+    """
+    构建后自检：真的把 backend.exe 启动起来，问一次 /api/health。
+
+    为什么必须做：PyInstaller 是静态分析，漏掉模块时**构建仍然成功**，
+    只有运行时才报 `ModuleNotFoundError`。曾经就因此打出了装包里 exe 起不来的版本
+    （app.py 的 `from core import config` 没被收集到）。构建脚本自检能当场抓住。
+    """
+    import subprocess
+    import time
+    import urllib.request
+
+    exe = os.path.join(DIST, "backend.exe")
+    if not os.path.exists(exe):
+        print(f"  ❌ 未找到产物：{exe}")
+        return False
+
+    _banner("构建后自检：启动 exe 并请求 /api/health")
+    log_path = os.path.join(ROOT, "build-tmp", "selfcheck.log")
+    os.makedirs(os.path.dirname(log_path), exist_ok=True)
+
+    DETACHED = 0x00000008 | 0x00000200 | 0x08000000
+    with open(log_path, "w", encoding="utf-8") as log:
+        p = subprocess.Popen(
+            [exe, "--port", str(port), "--no-listener"],
+            stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+            creationflags=DETACHED if os.name == "nt" else 0,
+        )
+
+    ok = False
+    try:
+        for _ in range(60):          # --onefile 首次要解压，给足 30 秒
+            time.sleep(0.5)
+            try:
+                with urllib.request.urlopen(
+                        f"http://127.0.0.1:{port}/api/health", timeout=2) as r:
+                    if r.status == 200:
+                        print(f"  ✅ exe 启动正常，/api/health → {r.read().decode()[:80]}")
+                        ok = True
+                        break
+            except Exception:
+                pass
+        if not ok:
+            print("  ❌ 30 秒内没起来 —— 下面是 exe 的输出：")
+            try:
+                with open(log_path, encoding="utf-8", errors="ignore") as f:
+                    print("  " + "\n  ".join(f.read().splitlines()[:20]))
+            except Exception:
+                pass
+    finally:
+        try:
+            p.terminate()
+            time.sleep(0.5)
+        except Exception:
+            pass
+        try:
+            if os.name == "nt":
+                subprocess.run(["taskkill", "/F", "/PID", str(p.pid)], capture_output=True)
+        except Exception:
+            pass
+
+    return ok
+
+
 def main():
     try:
         import PyInstaller.__main__ as pyi
@@ -81,6 +145,11 @@ def main():
         "--name", "backend",
         "--onefile",
         "--console",
+        # ⚠️ 必须把仓库根目录加入搜索路径：
+        # app.py 里的 `from core import config` 依赖它自己那句 sys.path.insert，
+        # 但那是**运行时**才执行的，PyInstaller 静态分析时看不到 →
+        # 不传 --paths 打出来的 exe 会报 `ModuleNotFoundError: No module named 'core'`。
+        "--paths", ROOT,
         "--add-data", f"{os.path.join(ROOT, 'web', 'static')}{SEP}web/static",
         "--add-data", f"{os.path.join(ROOT, 'config.yaml')}{SEP}.",
         "--distpath", DIST,
@@ -92,10 +161,19 @@ def main():
     for mod in ("uvicorn.logging", "uvicorn.loops.auto", "uvicorn.protocols.http.auto",
                 "uvicorn.lifespan.on", "wcferry", "jieba"):
         args += ["--hidden-import", mod]
+    # core 下的模块也显式声明，避免动态引用（getattr/字符串）时被漏掉
+    for mod in ("core", "core.config", "core.engine", "core.summarizer",
+                "core.stats", "core.message_source", "core.pusher", "core.scheduler",
+                "core.dispatcher", "core.selection", "core.video_parser"):
+        args += ["--hidden-import", mod]
 
     pyi.run(args)
 
     copy_vendor()
+
+    if not verify_exe():
+        print("\n❌ 自检未通过：exe 起不来，别急着打包 Electron（会做出装不上的安装包）")
+        sys.exit(2)
 
     _banner("打包完成")
     print(f"  exe: {os.path.join(DIST, 'backend.exe')}")
