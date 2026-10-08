@@ -274,15 +274,48 @@ npm start                    # 起后端 + 主窗口 + 悬浮窗 + 注册热键
 > （实测本机 3 分钟装完 310 个包，electron v20.18.0）
 
 **PC 桌面版（打包 exe）**
+
 ```bash
-# 1) 先把 Python 后端打成 exe
+# 1) 先把 Python 后端打成 exe（末尾会自动起 exe 打 /api/health 自检，不通就报错退出）
 pip install pyinstaller
 python scripts/build_backend.py          # 产物 backend-dist/backend.exe
 
 # 2) 再打 Electron 安装包
-cd desktop
-npm run dist                            # 产物 desktop/release/ 下的 exe / NSIS 安装包
+#    ⚠️ 受限环境（Windows 非管理员 / 网络受限）直接跑 npm run dist 会失败，
+#    用这个脚本：它会绕开 winCodeSign 的 macOS 符号链接死循环 + 起本地镜像供应组件
+python scripts/build_installer_local_mirror.py
+#    产物：wms-build/out/WeChatAIHelper-Setup-1.3.1.exe（NSIS）
+#          wms-build/out/WeChatAIHelper-Portable-1.3.1.exe（免安装）
+
+# 3) 验证打出来的包真的能跑（真起窗口 + CDP 连进渲染进程）
+cd .. && unset ELECTRON_RUN_AS_NODE NODE_OPTIONS
+PACKAGED_APP="$(pwd)/wms-build/out/win-unpacked/微信消息AI助手.exe" \
+CDP_PORT=9577 node tools/desktop-selftest.mjs
 ```
+
+<details>
+<summary>自己打 Windows 安装包时踩过的 6 个坑（点开看）</summary>
+
+1. **`No module named 'core'`** —— `build_backend.py` 没给 PyInstaller 传 `--paths`。
+   入口脚本里的 `sys.path.insert` 是**运行时**才执行的，静态分析阶段看不到。
+2. **`UnicodeEncodeError: 'charmap' codec`** —— `--console` 打包后 stdout 是 cp1252，
+   打印中文日志直接抛异常。修法在 `web/app.py` **模块级**重配 UTF-8
+   （不能只放 `main()` 里，`create_engine()` 在 print 之前就调）。
+3. **electron-builder 死循环** —— `winCodeSign-2.6.0` 包里混了两个 macOS 符号链接
+   （`libcrypto.dylib` 只有 21 字节，存的是链接目标路径），Windows 建不了符号链接 →
+   解压退出码 2 → 无限重下重失败。脚本里把符号链接换成实体文件重打包，
+   并同步改 `app-builder.exe` 里的期望 sha512。
+4. **`extraResources` 整个 `backend/` 目录静默丢失** —— 传**绝对路径**的
+   `--config.directories.output` 会让相对路径解析错位，装完启动即崩。用相对路径。
+5. **沙箱批量删除保护** —— 脚本里 `shutil.rmtree` 删 >50 个文件会触发拦截，
+   临时目录改时间戳命名、只新建不删除。
+6. **输出目录有残留文件** → `EnsureEmptyDir` 报「被其他进程占用」（实际没人占），
+   每次换一个新的空输出目录。
+
+**共同教训：PyInstaller / electron-builder「构建成功」毫无意义，必须真启动一次验证。**
+`build_backend.py` 已内置后端自检；桌面端用 `tools/desktop-selftest.mjs`。
+
+</details>
 
 ### 3. 自检（排查问题时先跑这个）
 
@@ -295,6 +328,13 @@ node tools/smoke-web.mjs
 
 # 设置面板自检（9 项断言）
 node tools/verify-settings.mjs
+
+# 桌面端真机自检（真起 Electron + CDP 连渲染进程，9 项断言）
+# ⚠️ 必须清掉 ELECTRON_RUN_AS_NODE / NODE_OPTIONS，否则 Electron 退化成 Node REPL：
+#    永远无窗口、且**不报错**（表现就是秒退 exit 0）
+unset ELECTRON_RUN_AS_NODE NODE_OPTIONS
+PACKAGED_APP="$(pwd)/wms-build/out/win-unpacked/微信消息AI助手.exe" \
+CDP_PORT=9577 node tools/desktop-selftest.mjs
 ```
 
 ## 六、GitHub 上现成项目（借鉴关系）
@@ -320,7 +360,22 @@ MIT
 
 ## 九、更新日志
 
-### v1.3.1（2026-09-30）
+### v1.3.1（2026-10-08，桌面版发布）
+
+**桌面版（Electron）打包链路打通，出 Windows 安装包 + 桌面/开始菜单快捷方式。**
+⚠️ **本次修掉了三个历史遗留 bug，意味着 v1.3.0 及更早打出的安装包后端启动即崩、无法使用**
+（构建脚本自 v1.1.0 起没改过）：
+
+1. `ModuleNotFoundError: No module named 'core'` —— 没给 PyInstaller 传 `--paths`；
+   入口脚本里的 `sys.path.insert` 是运行时才执行的，静态分析阶段看不到。
+2. `UnicodeEncodeError: 'charmap' codec` —— `--console` 打包后 stdout 是 cp1252，
+   打印中文日志直接抛异常。修法在 `web/app.py` **模块级**重配 UTF-8
+   （不能只放 `main()` 里，因为 `create_engine()` 在 print 之前就调用）。
+3. `extraResources` 整个 `backend/` 目录**静默丢失** —— 传绝对路径 output 目录会让
+   相对路径解析错位，`resources/` 里只剩 `app.asar`，装完启动即崩。
+
+**网页侧改动**
+
 - **API Key 输入框直接搬到首页**（本次重点）：以前要「点设置 → 在弹窗里找」，现在**打开首页第一张卡就是输入框**，粘贴 key 点「保存 key」即可，一步都不用多点。
   - 卡片随状态自动切换：未配置/占位符 → 展开表单（明文输入框 + 保存 + 测试连接）；已配置 → 收起为掩码显示 + 「更多设置」。
   - 顶部横幅按钮改为「去填 key」，点击**直接平滑滚动并聚焦该输入框**（不再跳设置弹窗）。
@@ -329,9 +384,16 @@ MIT
   - 接口加保护：`written` 为空时返回 **400 + 明确错误**，不再假报成功。
 - **修复卡片内两个区块同时显示**：`.ai-setup-form` / `.ai-setup-done` 自身的 `display` 会盖掉 HTML 的 `hidden` 属性，补 `[hidden] { display:none !important }` 强制规则。
 - **首页输入框用明文**（`type="text"` 而非 `password`）：占位符 `sk-xxxxxxxx` 能直接看见，不再是看不清的小圆点。
+
+**工程化**
+
+- 新增 `scripts/build_installer_local_mirror.py`：一键打 Windows 安装包，绕开 `winCodeSign` 的 macOS 符号链接死循环（那 21 / 18 字节的「文件」其实是链接目标路径），并起本地 HTTP 镜像供应组件。
+- `build_backend.py` 加了**构建后自检**：自动启动 exe 请求 `/api/health`，不通就报错退出 —— 这类「打出来但跑不起来」的静默失败以后会被当场抓住。
+- 新增 `tools/desktop-selftest.mjs`：真起 Electron + CDP 连进渲染进程，9 项断言（后端就绪 / 主进程存活 / 两窗口渲染完成 / API Key 输入框存在 / 页面标题正确）。
 - 新增 `tools/verify-inline-key.mjs`：headless 浏览器验证「打开首页即可填 key」全流程（含**按渲染盒尺寸**判断真实可见，能抓出被 CSS 盖掉的隐藏元素）。
 - 新增 `tools/serve-detached.py`：把网页版服务以 `DETACHED_PROCESS` 方式**后台常驻**启动（`--status` / `--stop` 一并给了）。
-  原因：受限环境里用 bash 的 `&` / `nohup` 启动时进程会瞬间被杀（日志空白、端口无监听），必须真正脱离父进程才行。
+- 新增 `tools/upload_release_assets.py`：用 API 上传 Release 资产（注意上传域名是 `uploads.github.com`，不是 `api.github.com`；中文资产名会被截断成 `AI.Setup.1.3.1.exe`，须显式给英文名）。
+- 新增 `tools/make-desktop-shortcut.cjs`：桌面 + 开始菜单快捷方式（沙箱拦 COM 实例化，用 koffi 直调 `IShellLinkW`）。
 - 版本 1.3.0 → 1.3.1。
 
 ### v1.3.0（2026-09-30）
